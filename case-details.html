@@ -219,41 +219,66 @@
   const fmtRate = (pct, fee) => [pct != null ? esc(pct) + '%' : '', fee != null ? esc(fee) + ' EGP' : ''].filter(Boolean).join(' + ') || '\u2014';
   const below = (req, std, unit) => { if (req == null || std == null) return ''; const d = Math.round((Number(req) - Number(std)) * 100) / 100; return d === 0 ? '' : (d < 0 ? '\u2212' : '+') + Math.abs(d) + unit; };
   function panelPricing(c) {
-    const app = c.app, configs = app.summary.serviceConfigs || [], decisions = K.decisionsFor(app.id), cards = [];
-    const lineCount = app.requests.length, decided = app.requests.filter(r => decisions[r.id]);
-    configs.forEach(sc => (sc.configs || [{ bank: '', module: '' }]).forEach(cfg => {
-      if (sc.service === 'Transfers') {
-        const t = app.transfers || { fees: {} };
-        const fees = [['wallet', 'Wallet'], ['bank', 'Bank'], ['card', 'Card']].map(([k, l]) => { const f = (t.fees || {})[k] || {};
-          return `<div class="pr-line"><div class="pr-what"><b>${l} transfer fee</b></div><div class="pr-nums"><b>${esc(f.percentage || '\u2014')}% + ${esc(f.flat || '\u2014')}</b></div></div>`; }).join('');
-        cards.push(`<div class="cfg-card"><div class="cfg-head">Transfers</div><div class="cfg-rows">${kv('Financial institution', cfg.bank)}${kv('Version', cfg.module)}</div><div class="cfg-rates">${fees}</div></div>`);
-        return;
-      }
-      const lines = app.requests.filter(r => r.service === sc.service && (r.bank || '') === (cfg.bank || ''));
-      const rates = lines.map(l => {
-        const d = decisions[l.id], dr = below(l.requested, l.standard, '%'), df = below(l.requestedFee, l.standardFee, ' EGP');
-        const chip = d ? `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span>` : `<span class="chip warning">Waiting for ${esc(K.TIER_OWNER[l.tier])}</span>`;
-        return `<div class="pr-line">
-          <div class="pr-what"><b>${esc(l.rate)}</b>
-            <div class="pr-note">${l.note ? `<span class="muted">Sales\u2019 justification:</span> \u201c${esc(l.note)}\u201d` : '<span class="muted">No justification was given.</span>'}</div></div>
-          <div class="pr-nums"><div><span class="muted">Requested</span> <b>${fmtRate(l.requested, l.requestedFee)}</b></div>
-            <div><span class="muted">Published</span> ${fmtRate(l.standard, l.standardFee)}</div>
-            ${dr || df ? `<div class="pr-diff">${[dr, df].filter(Boolean).join(' \u00b7 ')} against published</div>` : ''}</div>
-          <div class="pr-dec">${chip}<span class="muted" style="font-size:12px">${d ? esc(d.by) + (d.roleLabel ? ' \u00b7 ' + esc(d.roleLabel) : '') : 'Needs ' + esc(K.TIER_LABEL[l.tier])}</span>${d && d.reason ? `<span style="font-size:12px;color:var(--cadet-base)">\u201c${esc(d.reason)}\u201d</span>` : ''}</div></div>`;
-      }).join('');
-      cards.push(`<div class="cfg-card"><div class="cfg-head">${esc(sc.service)}</div>
-        <div class="cfg-rows">${kv('Financial institution', cfg.bank || 'Not required')}${kv('Settlement type', cfg.module)}</div>
-        ${rates ? `<div class="cfg-rates">${rates}</div>` : ''}<div class="cfg-foot">${rates ? 'Every other rate on this service is at published pricing.' : 'Every rate on this service is at published pricing \u2014 nothing needed approval.'}</div></div>`);
-    }));
-    const summary = `${configs.length} service${configs.length === 1 ? '' : 's'} \u00b7 ${lineCount ? lineCount + ' rate' + (lineCount === 1 ? '' : 's') + ' below published pricing, ' + decided.length + ' approved' : 'all rates at published pricing'}`;
+    const app = c.app, byId = {}, decisions = K.decisionsFor(app.id), s = app.summary, cfgs = {};
+    app.requests.forEach(r => { byId[r.id] = r; });
+    (s.serviceConfigs || []).forEach(sc => { cfgs[sc.service] = sc; });
+    const chosen = s.services || [], lineCount = app.requests.length, decided = app.requests.filter(r => decisions[r.id]).length;
+    const val = (v, unit) => `<span class="val-box">${v == null || v === '' ? '\u2014' : esc(v)}<i>${unit}</i></span>`;
+    const approvalOf = line => {
+      if (!line) return '<span class="muted">No approval needed</span>';
+      const d = decisions[line.id];
+      if (!d) return `<span class="chip warning">Pending</span><div class="rp-by">With the ${esc(K.TIER_OWNER[line.tier])}</div>`;
+      return `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span><div class="rp-by">${esc(d.by)}</div>${d.reason ? `<div class="rp-why">${esc(d.reason)}</div>` : ''}`;
+    };
+    const head = ['Service', 'Model', 'Rate type', 'Fees (%)', 'Flat fees', 'Financial institution', 'Rate approval'];
+    let rows = '';
+    C.CATALOG.forEach(tier => {
+      const services = tier.services.filter(sv => chosen.indexOf(sv) !== -1);
+      if (!services.length) return;
+      rows += `<tr class="svc-tier-row"><td colspan="${head.length}" class="svc-tier-head">${esc(tier.tier)} Services</td></tr>`;
+      if (tier.tier === 'POS' && s.posTerminals) rows += `<tr class="svc-terminals-row"><td colspan="${head.length}"><b>Number of terminals:</b> ${esc(s.posTerminals)}</td></tr>`;
+      services.forEach(sv => {
+        const sc = cfgs[sv] || { configs: [{}] };
+        (sc.configs && sc.configs.length ? sc.configs : [{}]).forEach(cfg => {
+          const tiers = C.ratesFor(app, sv, Object.assign({ bank: cfg.bank || '' }, cfg));
+          const cur = cfg.currencies && cfg.currencies.length ? cfg.currencies : null;
+          const model = `<b>${esc(cfg.module ? cfg.module + ' - ' + (sv.startsWith('POS') ? 'POS' : 'Online') : '\u2014')}</b>`
+            + (sv.endsWith('Card') && cur ? `<div class="op-list"><div class="op-title">Accepted currencies</div>${cur.map(x => `<div class="op-item">${esc(x)}</div>`).join('')}</div>` : '')
+            + ((cfg.operations || []).length ? `<div class="op-list"><div class="op-title">Advanced operations</div>${cfg.operations.map(x => `<div class="op-item">${esc(x)}</div>`).join('')}</div>` : '')
+            + (cfg.notes ? `<div class="op-list"><div class="op-title">Notes</div><div class="op-note">${esc(cfg.notes)}</div></div>` : '');
+          tiers.forEach((t, i) => {
+            const line = byId[`${sv}::${cfg.bank || ''}::${t.key}`] || (t.key === 'intl-EGP' ? byId[`${sv}::${cfg.bank || ''}::international`] : null);   // older sample applications use the key "international"
+            const pub = line && line.standard != null ? [line.standard + '%', (line.standardFee != null ? line.standardFee : t.fixedFee) + ' ' + (t.feeCurrency || 'EGP')].join(' + ') : [t.standard + '%', t.fixedFee + ' ' + (t.feeCurrency || 'EGP')].join(' + ');   // the application records the published rate it compared against
+            rows += `<tr class="${i === 0 ? 'group-start' : ''}">
+              ${i === 0 ? `<td rowspan="${tiers.length}" class="cell-top"><b>${esc(sv.replace(/^(Online|POS) /, ''))}</b></td><td rowspan="${tiers.length}" class="cell-top">${model}</td>` : ''}
+              <td>${esc(t.label)}${line ? `<div class="rate-just"><div class="rate-just-pub">Published ${esc(pub)}</div><div class="rate-just-note${line.note ? '' : ' empty'}">${line.note ? esc(line.note) : 'No justification recorded'}</div></div>` : ''}</td>
+              <td>${val(line ? line.requested : t.standard, '%')}</td>
+              <td>${val(line ? line.requestedFee : t.fixedFee, esc(t.feeCurrency || 'EGP'))}</td>
+              ${i === 0 ? `<td rowspan="${tiers.length}" class="cell-top">${esc(cfg.bank || 'Not required')}</td>` : ''}
+              <td class="cell-approval">${approvalOf(line)}</td></tr>`;
+          });
+        });
+      });
+    });
+    // Services outside the catalog (for example Transfers) carry their own fees.
+    const extra = chosen.filter(sv => !C.CATALOG.some(t => t.services.indexOf(sv) !== -1)).map(sv => {
+      if (sv !== 'Transfers') return `<div class="cfg-card"><div class="cfg-head">${esc(sv)}</div></div>`;
+      const t = app.transfers || { fees: {} };
+      const fees = [['wallet', 'Wallet'], ['bank', 'Bank'], ['card', 'Card']].map(([k, l]) => { const f = (t.fees || {})[k] || {};
+        return `<div class="pr-line"><div class="pr-what"><b>${l} transfer fee</b></div><div class="pr-nums"><b>${esc(f.percentage || '\u2014')}% + ${esc(f.flat || '\u2014')}</b></div></div>`; }).join('');
+      return `<div class="cfg-card"><div class="cfg-head">Transfers</div><div class="cfg-rates">${fees}</div></div>`;
+    }).join('');
+    const summary = `${chosen.length} service${chosen.length === 1 ? '' : 's'} \u00b7 ${lineCount ? lineCount + ' rate' + (lineCount === 1 ? '' : 's') + ' below published pricing, ' + decided + ' approved' : 'all rates at published pricing'}`;
     return `<h2 class="sec-title">Services &amp; pricing</h2>
       <div class="alert info"><svg class="hi-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
         <div class="at"><b>What you are confirming \u2014 ${esc(summary)}</b>
           <ul style="margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:2px">
             <li>The services and banks fit the merchant\u2019s business (${esc(c.industry)}).</li>
-            <li>Each settlement type and financial institution is correct for the service.</li>
+            <li>Each model and financial institution is correct for the service.</li>
             <li>Every rate below published pricing is justified and was approved by the right level.</li></ul></div></div>
-      ${cards.length ? `<div style="display:flex;flex-direction:column;gap:12px">${cards.join('')}</div>` : `<div class="empty"><div class="t">No services were submitted</div></div>`}
+      ${rows ? `<div class="svc-table-wrap"><table class="svc-table"><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+      ${extra ? `<div style="display:flex;flex-direction:column;gap:12px">${extra}</div>` : ''}
+      ${!rows && !extra ? `<div class="empty"><div class="t">No services were submitted</div></div>` : ''}
       ${reviewBar(c, 'pricing', 'Services & pricing')}`;
   }
   const PV = { 'pending-ops': ['warning', 'Awaiting your approval'], 'awaiting-merchant': ['neutral', 'Awaiting merchant verification'], verified: ['positive', 'Verified'], rejected: ['negative', 'Rejected'] };
@@ -297,9 +322,24 @@
       : esc(l.assignee || '—') + `<span class="muted" style="display:block;font-size:11px;font-weight:400">Only an Underwriting Manager can reassign</span>`;
     const summary = `<div class="card"><div class="card-body">${crow('Assignee', assign, true)}</div></div>`;
     const stText = { ok: 'Verified', flag: 'Flagged', todo: 'Not reviewed', na: 'Not provided' };
+    /* One row per step, in the application's order. The documents are reviewed one by one, so they sit together under a
+       single "Documents" step instead of each taking a row of its own. */
+    const dot = st => `<span class="ckdot ${st === 'todo' || st === 'na' ? '' : st}">${st === 'ok' ? C.icon('check', 'hi-xs', 3) : st === 'flag' ? C.icon('x', 'hi-xs', 3) : ''}</span>`;
+    const rowOf = (i, sub) => `<button type="button" data-go="${i.tab}"${sub ? ' class="sub"' : ''}>${dot(i.state)}<span>${esc(i.label)}${i.optional ? ' <span class="muted" style="font-size:12px">(optional)</span>' : ''}</span><span class="st ${i.state}">${stText[i.state]}</span></button>`;
+    const checklistRows = list => {
+      const out = [], docs = list.filter(i => i.tab === 'documents');
+      list.forEach(i => {
+        if (i.tab !== 'documents') { out.push(rowOf(i)); return; }
+        if (i !== docs[0]) return;
+        const ok = docs.filter(d => d.state === 'ok').length, state = docs.some(d => d.state === 'flag') ? 'flag' : ok === docs.length ? 'ok' : 'todo';
+        out.push(`<button type="button" data-go="documents">${dot(state)}<span>Documents</span><span class="st ${state}">${state === 'ok' ? 'Verified' : state === 'flag' ? 'Flagged' : ok + ' of ' + docs.length + ' verified'}</span></button>`);
+        docs.forEach(d => out.push(rowOf(d, true)));
+      });
+      return out.join('');
+    };
     const checklist = isOpen(c) ? `<div class="card"><div class="card-head"><h3>Review checklist</h3><span style="font-size:12px;color:var(--cadet-base)">${p.done} of ${p.total}</span></div><div class="card-body">
       <div class="progress" role="progressbar" aria-valuenow="${p.done}" aria-valuemin="0" aria-valuemax="${p.total}"><i style="width:${p.total ? p.done / p.total * 100 : 0}%"></i></div>
-      <div class="cl">${p.list.map(i => `<button type="button" data-go="${i.tab}"><span class="ckdot ${i.state === 'todo' || i.state === 'na' ? '' : i.state}">${i.state === 'ok' ? C.icon('check', 'hi-xs', 3) : i.state === 'flag' ? C.icon('x', 'hi-xs', 3) : ''}</span><span>${esc(i.label)}${i.optional ? ' <span class="muted" style="font-size:12px">(optional)</span>' : ''}</span><span class="st ${i.state}">${stText[i.state]}</span></button>`).join('')}</div></div></div>` : '';
+      <div class="cl">${checklistRows(p.list)}</div></div></div>` : '';
     const notes = `<div class="card"><div class="card-head"><h3>Internal notes</h3></div><div class="card-body">
       <div class="field"><textarea class="textarea" id="noteText" style="min-height:72px" placeholder="Visible to Underwriting only" aria-label="Internal note"></textarea></div>
       <button class="btn btn-outline btn-sm" type="button" id="noteAdd" style="align-self:flex-end">${C.icon('chat', 'hi-sm')}Add note</button>

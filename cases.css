@@ -411,3 +411,32 @@ td.cell-end, th.cell-end { text-align: end; }
 .pr-diff { font-size: 12px; font-weight: 600; color: var(--destructive); }
 .pr-dec { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 @media (max-width: 767px) { .pr-line { grid-template-columns: 1fr; gap: 8px; } }
+
+/* Documents sit under their step in the checklist */
+.cl button.sub { padding: 6px 0 6px 30px; font-size: 13px; border-top: none; color: var(--cadet-base); }
+.cl button.sub .ckdot { width: 16px; height: 16px; }
+
+/* Services & Pricing table, laid out as in the sales application */
+.svc-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.svc-table { width: 100%; border-collapse: collapse; min-width: 860px; font-size: 13px; }
+.svc-table th { text-align: start; font-weight: 600; color: var(--foreground); background: #FAFBFB; padding: 9px 10px; border-bottom: 1px solid var(--border); border-inline-end: 1px solid var(--border-subtle); white-space: nowrap; }
+.svc-table th:last-child { border-inline-end: none; }
+.svc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); border-inline-end: 1px solid var(--border-subtle); vertical-align: middle; color: var(--foreground); }
+.svc-table td:last-child { border-inline-end: none; }
+.svc-table tr.group-start td { border-top: 1px solid var(--border); }
+.svc-table .cell-top { vertical-align: top; padding-top: 9px; min-width: 120px; }
+.svc-table .cell-approval { min-width: 150px; }
+.svc-tier-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cadet-04); background: var(--muted); padding: 9px 10px !important; }
+.svc-terminals-row td { padding: 9px 10px; }
+.val-box { display: inline-flex; align-items: center; gap: 6px; min-width: 76px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); font-weight: 600; }
+.val-box i { font-style: normal; font-weight: 400; color: var(--cadet-05); font-size: 12px; }
+.op-list { margin-top: 8px; }
+.op-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cadet-05); margin-bottom: 4px; }
+.op-item { font-size: 12px; padding: 1px 0; }
+.op-note { font-size: 12px; background: var(--muted); border-radius: var(--radius); padding: 6px 8px; line-height: 1.4; }
+.rate-just { margin-top: 4px; white-space: normal; max-width: 280px; }
+.rate-just-pub { font-size: 12px; color: var(--cadet-05); }
+.rate-just-note { font-size: 12px; color: var(--cadet-base); background: var(--muted); border-radius: var(--radius); padding: 6px 8px; margin-top: 4px; line-height: 1.4; }
+.rate-just-note.empty { color: var(--cadet-06); font-style: italic; }
+.rp-by { font-size: 12px; color: var(--cadet-05); margin-top: 3px; }
+.rp-why { font-size: 12px; color: var(--cadet-base); margin-top: 3px; white-space: normal; }
