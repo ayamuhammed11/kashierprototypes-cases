@@ -21,7 +21,7 @@
         <div>
           <div class="crumbs"><span>Underwriting</span><span class="sep">/</span><span class="cur">Cases</span></div>
           <h1>Cases</h1>
-          <p class="sub">Sales applications sent to Underwriting, until the account goes live. Open a case to see everything the salesperson submitted, then approve it for the bank or reject it and send it back to Sales.</p>
+          <p class="sub" id="pageSub">Sales applications sent to Underwriting, until the account goes live. Open a case to see everything the salesperson submitted, then approve it for the bank or reject it and send it back to Sales.</p>
         </div>
       </div>
 
@@ -122,7 +122,8 @@
 
   function renderFilters() {
     const uniq = f => [...new Set(CASES.map(f))].filter(Boolean).sort();
-    chip($('fAssignee'), 'user', 'Assignee', (C.TEAM.indexOf(C.user().name) !== -1 ? [['__me', 'Me']] : []).concat(C.TEAM.filter(n => n !== C.user().name).map(n => [n, n])), 'assignee');
+    $('fAssignee').hidden = !C.user().canReassign;     // agents only ever see their own cases
+    if (C.user().canReassign) chip($('fAssignee'), 'user', 'Assignee', (C.TEAM.indexOf(C.user().name) !== -1 ? [['__me', 'Me']] : []).concat(C.TEAM.filter(n => n !== C.user().name).map(n => [n, n])), 'assignee');
     chip($('fOwner'), 'users', 'Submitted by', uniq(c => c.app.actor).map(i => [i, i]), 'owner');
   }
 
@@ -213,6 +214,7 @@
 
   { const q = new URLSearchParams(location.search).get('q'); if (q) { S.q = q; $('topSearch').value = q; } }
   { const m = new URLSearchParams(location.search).get('msg'); if (m) { C.toast(m); history.replaceState(null, '', 'cases.html'); } }
+  $('pageSub').textContent += C.user().canReassign ? ' You see every case and can reassign them.' : ' You see only the cases assigned to you.';
   render();                                   // skeleton first, then the data
   setTimeout(() => { CASES = C.all(); S.loading = false; render(); }, 250);
 </script>

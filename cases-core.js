@@ -13,14 +13,20 @@
 window.Cases = (function () {
   const K = window.KashierRates;
   const ME = K.ROLES.onboarding;                       // Underwriting works as the Onboarding Team role
-  const TEAM = [ME.name, 'Omar Hassan', 'Salma Nabil'];       // the underwriting agents cases rotate between
-  /* Who is using the module. An Underwriting Manager is authorized to reassign cases between agents; agents are not. */
+  const TEAM = ['Rana Adel', 'Omar Hassan', 'Salma Nabil'];   // the underwriting agents cases rotate between
+  /* Who is using the module. Each agent sees only the cases assigned to them; an Underwriting Manager sees every case and is
+     authorized to reassign cases between agents. */
   const USERS = {
-    agent:   { key: 'agent',   name: ME.name,        initials: ME.initials, label: 'Underwriting Agent',   canReassign: false },
-    manager: { key: 'manager', name: 'Layla Samir',  initials: 'LS',        label: 'Underwriting Manager', canReassign: true },
+    agent:   { key: 'agent',   name: 'Rana Adel',   initials: 'RA', label: 'Underwriting Agent',   canReassign: false },
+    agent2:  { key: 'agent2',  name: 'Omar Hassan', initials: 'OH', label: 'Underwriting Agent',   canReassign: false },
+    agent3:  { key: 'agent3',  name: 'Salma Nabil', initials: 'SN', label: 'Underwriting Agent',   canReassign: false },
+    manager: { key: 'manager', name: 'Layla Samir', initials: 'LS', label: 'Underwriting Manager', canReassign: true },
   };
   function user() { let k = 'agent'; try { k = localStorage.getItem('kashierCasesUser') || 'agent'; } catch (e) { /* storage unavailable */ } return USERS[k] || USERS.agent; }
   function setUser(k) { try { localStorage.setItem('kashierCasesUser', k); } catch (e) { /* storage unavailable */ } }
+  // Decisions made here are recorded under whoever is signed in, not a fixed name.
+  ME.name = user().name; ME.initials = user().initials;
+  const canSee = c => user().canReassign || c.assignee === user().name;
   const STORE = 'kashierCases';
 
   /* Heroicons (outline, 24px) — path data copied verbatim from @heroicons/react. */
@@ -128,8 +134,8 @@ window.Cases = (function () {
         services: s.services || [], industry: s.industry, type: s.entity };
     });
   }
-  const all = build;
-  const get = appId => build().filter(c => c.app.id === appId)[0] || null;
+  const all = () => build().filter(canSee);
+  const get = appId => build().filter(c => c.app.id === appId && canSee(c))[0] || null;
 
   /* ── Review checklist ──
      Business details and Services & pricing are checked by hand; every document and contract is checked on its
@@ -200,7 +206,7 @@ window.Cases = (function () {
       (opts.search === false ? '' : '<div class="top-search">' + icon('search', 'hi', 1.5) +
       '<input type="search" id="topSearch" placeholder="' + esc(opts.placeholder || 'Search cases') + '" aria-label="' + esc(opts.placeholder || 'Search cases') + '"></div>') +
       '<div class="topbar-right"><label class="role-switch" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--cadet-04)">Viewing as<select id="userSel" class="select" style="height:32px;width:auto;font-size:13px;padding:0 8px">' +
-      Object.keys(USERS).map(k => '<option value="' + k + '"' + (user().key === k ? ' selected' : '') + '>' + esc(USERS[k].label) + '</option>').join('') + '</select></label>' +
+      Object.keys(USERS).map(k => '<option value="' + k + '"' + (user().key === k ? ' selected' : '') + '>' + esc(USERS[k].name + ' \u00b7 ' + USERS[k].label.replace('Underwriting ', '')) + '</option>').join('') + '</select></label>' +
       '<button class="lang" type="button">عربي</button><div class="divider"></div>' +
       '<div class="user"><div class="avatar">' + esc(user().initials) + '</div><div class="who"><span class="name">' + esc(user().name) + '</span><span class="role">' + esc(user().label) + '</span></div></div></div>';
     document.getElementById('userSel').addEventListener('change', e => { setUser(e.target.value); location.reload(); });
