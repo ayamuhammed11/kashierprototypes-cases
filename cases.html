@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kashier | Cases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="cases.css">
+</head>
+<body>
+  <div class="overlay" id="overlay"></div>
+  <div id="shell-side"></div>
+
+  <main class="main">
+    <div class="topbar" id="shell-top"></div>
+
+    <div class="content">
+      <div class="page-head">
+        <div>
+          <div class="crumbs"><span>Underwriting</span><span class="sep">/</span><span class="cur">Cases</span></div>
+          <h1>Cases</h1>
+          <p class="sub">Sales applications sent to Underwriting, until the account goes live. Open a case to see everything the salesperson submitted, then approve it for the bank or reject it and send it back to Sales.</p>
+        </div>
+      </div>
+
+      <div class="tabs" id="statusTabs" role="tablist" aria-label="Case status"></div>
+
+      <div class="list-block">
+        <div class="filter-row" id="filterRow">
+          <label class="fsearch"><svg class="hi-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg><input type="search" id="topSearch" placeholder="Search by business name, MID or email" aria-label="Search by business name, MID or email"></label>
+          <div class="fchip-wrap" id="fAssignee"></div>
+          <div class="fchip-wrap" id="fOwner"></div>
+          <button class="text-btn filter-end" id="exportBtn" type="button"><svg class="hi-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg> Export</button>
+        </div>
+
+        <div class="card">
+          <div class="dt-wrap table-scroll">
+            <table class="dt">
+              <thead id="thead"></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="cards" id="cards" style="padding:12px"></div>
+          <div class="empty" id="empty" hidden>
+            <div class="ic" id="emptyIc"></div>
+            <div class="t" id="emptyT">No cases match these filters</div>
+            <div class="d" id="emptyD">Try another status tab or clear the filters.</div>
+            <button class="btn btn-outline btn-sm" id="clearBtn" type="button">Clear filters</button>
+          </div>
+          <div class="pager" id="pager">
+            <span class="cap count" id="pgCount"></span>
+            <label class="cap rpp">Rows per page:
+              <select id="rpp"><option>10</option><option>20</option><option>50</option></select><svg class="hi-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+            </label>
+            <div class="nav">
+              <button class="pg-btn" id="pgPrev" type="button" aria-label="Previous page"><svg class="hi-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg></button>
+              <span class="cap frac" id="pgFrac"></span>
+              <button class="pg-btn" id="pgNext" type="button" aria-label="Next page"><svg class="hi-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script src="rate-decisions.js"></script>
+<script src="cases-core.js"></script>
+<script>
+  const C = Cases, esc = C.esc, $ = id => document.getElementById(id);
+  C.mountShell({ search: false });
+
+  const TABS = [['all', 'All'], ['submitted', 'Underwriting Review'], ['pending-configurations', 'Bank Submission']];
+  const S = { tab: 'all', q: '', assignee: '', owner: '', page: 1, per: 10, sort: null, loading: true };
+  let CASES = [];
+
+  const COLS = [
+    { k: 'no', h: 'Case ID', sort: true }, { k: 'biz', h: 'Merchant', sort: true }, { k: 'status', h: 'Status' }, { k: 'owner', h: 'Submitted by', sort: true }, { k: 'assignee', h: 'Assignee', sort: true }, { k: 'since', h: 'Submitted', sort: true }, { k: 'age', h: 'Time in stage' }, { k: 'go', h: '' },
+  ];
+  const sortVal = (c, k) => ({ no: c.no, biz: c.app.biz.toLowerCase(), owner: c.app.actor, assignee: c.assignee || '~', since: new Date(c.since).getTime() })[k];
+
+  function filtered(ignoreTab) {
+    const q = S.q.trim().toLowerCase();
+    return CASES.filter(c => {
+      if (!ignoreTab && S.tab !== 'all' && c.status !== S.tab) return false;
+      if (S.assignee === '__me' && c.assignee !== C.user().name) return false;
+      if (S.assignee === '__none' && c.assignee) return false;
+      if (S.assignee && !S.assignee.startsWith('__') && c.assignee !== S.assignee) return false;
+      if (S.owner && c.app.actor !== S.owner) return false;
+      if (q && ![c.app.biz, c.mid, c.app.summary.email].some(v => String(v || '').toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }
+
+  function renderTabs() {
+    $('statusTabs').innerHTML = TABS.map(([k, label]) => {
+      const n = k === 'all' ? filtered(true).length : filtered(true).filter(c => c.status === k).length;
+      return `<button class="tab-btn ${S.tab === k ? 'active' : ''}" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${esc(label)} <span class="tab-count">${n}</span></button>`;
+    }).join('');
+  }
+
+  /* FilterChip: dashed = empty, solid + value = applied. Opens a one-choice menu. */
+  function chip(host, iconName, label, options, key) {
+    const cur = options.find(o => o[0] === S[key]);
+    host.innerHTML = `<button type="button" class="fchip ${cur ? 'filled' : ''}" aria-haspopup="listbox" aria-expanded="false">${C.icon(iconName)}<span>${esc(label)}${cur ? `: <b>${esc(cur[1])}</b>` : ''}</span>${C.icon('down')}</button>`;
+    const btn = host.firstElementChild;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const was = host.querySelector('.menu');
+      closeMenus();
+      if (was) return;
+      btn.setAttribute('aria-expanded', 'true');
+      const m = document.createElement('div'); m.className = 'menu'; m.setAttribute('role', 'listbox');
+      m.innerHTML = [['', 'All']].concat(options).map(o => `<button type="button" role="option" class="${S[key] === o[0] ? 'sel' : ''}" data-v="${esc(o[0])}">${esc(o[1])}${S[key] === o[0] ? C.icon('check', 'hi-sm', 2) : ''}</button>`).join('');
+      m.addEventListener('click', ev => { const b = ev.target.closest('[data-v]'); if (!b) return; S[key] = b.dataset.v; S.page = 1; render(); });
+      host.appendChild(m);
+    });
+  }
+  function closeMenus() { document.querySelectorAll('.menu').forEach(m => { m.parentNode.querySelector('.fchip').setAttribute('aria-expanded', 'false'); m.remove(); }); }
+  document.addEventListener('click', closeMenus);
+
+  function renderFilters() {
+    const uniq = f => [...new Set(CASES.map(f))].filter(Boolean).sort();
+    chip($('fAssignee'), 'user', 'Assignee', (C.TEAM.indexOf(C.user().name) !== -1 ? [['__me', 'Me']] : []).concat(C.TEAM.filter(n => n !== C.user().name).map(n => [n, n])), 'assignee');
+    chip($('fOwner'), 'users', 'Submitted by', uniq(c => c.app.actor).map(i => [i, i]), 'owner');
+  }
+
+  function rowHTML(c) {
+    const href = 'case-details.html?app=' + encodeURIComponent(c.app.id);
+    return `<tr tabindex="0" data-href="${href}">
+      <td><div class="two"><span class="idc">${esc(c.no)}</span>${c.resubmission ? `<span class="s">Resubmission of ${esc(c.resubmission)}</span>` : ''}</div></td>
+      <td><div class="two"><span class="p"><span class="t">${esc(c.app.biz)}</span></span><span class="s">${esc(c.mid || 'MID pending')}</span></div></td>
+      <td>${C.chip(c.status)}</td>
+      <td>${esc(c.app.actor)}</td>
+      <td>${c.assignee ? `<span class="assignee"><span class="avatar">${esc(C.initials(c.assignee))}</span>${esc(c.assignee)}</span>` : (c.status === 'submitted' ? '<span class="unassigned">Unassigned</span>' : '<span class="muted">—</span>')}</td>
+      <td><span class="datec">${C.fmtDate(c.since)}</span></td>
+      <td>${c.status === 'submitted' ? esc(C.ageOf(c.since)) : `<span class="muted">${esc(C.ageOf(c.since))}</span>`}</td>
+      <td class="cell-end"><span class="row-open" aria-hidden="true">${C.icon('right', 'hi-sm', 2)}</span></td></tr>`;
+  }
+  function cardHTML(c) {
+    const href = 'case-details.html?app=' + encodeURIComponent(c.app.id);
+    return `<button class="rcard" type="button" data-href="${href}">
+      <div class="top"><div class="two"><span class="p"><span class="t" style="font-weight:600">${esc(c.app.biz)}</span></span><span class="s">${esc(c.no)} · ${esc(c.mid || 'MID pending')}</span></div>${C.chip(c.status)}</div>
+      <div class="meta"><div><div class="k">Submitted by</div><div class="v">${esc(c.app.actor)}</div></div>
+        <div><div class="k">Assignee</div><div class="v">${esc(c.assignee || 'Unassigned')}</div></div>
+        <div><div class="k">Submitted</div><div class="v">${C.fmtDate(c.since)}</div></div>
+        <div><div class="k">Time in stage</div><div class="v">${esc(C.ageOf(c.since))}</div></div></div></button>`;
+  }
+
+  function renderHead() {
+    $('thead').innerHTML = '<tr>' + COLS.map(c => {
+      if (!c.sort) return `<th>${esc(c.h)}</th>`;
+      const on = !!S.sort && S.sort.key === c.k;
+      return `<th class="sortable ${on ? 'on' : ''}" aria-sort="${on ? (S.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button type="button" data-sort="${c.k}">${esc(c.h)}${C.icon(on ? (S.sort.dir === 'asc' ? 'up' : 'down') : 'updown', 'hi-xs', 2)}</button></th>`;
+    }).join('') + '</tr>';
+  }
+
+  function render() {
+    closeMenus();
+    renderTabs(); renderFilters(); renderHead();
+    $('rpp').value = S.per;
+    if (S.loading) {
+      $('tbody').innerHTML = Array.from({ length: 5 }, (_, r) => `<tr>${COLS.map((_, c) => `<td><div class="skel" style="width:${55 + ((r * 7 + c * 13) % 35)}%"></div></td>`).join('')}</tr>`).join('');
+      $('cards').innerHTML = Array.from({ length: 3 }, () => '<div class="rcard"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div></div>').join('');
+      $('empty').hidden = true; return;
+    }
+    let rows = filtered();
+    // Default order: what needs a decision first (oldest waiting on top), then the rest, newest first.
+    const rank = { submitted: 0, 'pending-configurations': 1, rejected: 2, live: 3 };
+    if (!S.sort) rows = rows.slice().sort((a, b) => (rank[a.status] - rank[b.status]) || (a.status === 'submitted' ? 1 : -1) * (new Date(a.since) - new Date(b.since)));
+    else rows = rows.slice().sort((a, b) => { const x = sortVal(a, S.sort.key), y = sortVal(b, S.sort.key); return (x > y ? 1 : x < y ? -1 : 0) * (S.sort.dir === 'asc' ? 1 : -1); });
+    const pages = Math.max(1, Math.ceil(rows.length / S.per));
+    if (S.page > pages) S.page = pages;
+    const start = (S.page - 1) * S.per, page = rows.slice(start, start + S.per);
+    $('tbody').innerHTML = page.map(rowHTML).join('');
+    $('cards').innerHTML = page.map(cardHTML).join('');
+    const none = rows.length === 0, anyFilter = S.q || S.assignee || S.owner;
+    $('empty').hidden = !none;
+    document.querySelector('.dt-wrap').style.display = none ? 'none' : '';
+    $('cards').style.display = none ? 'none' : '';
+    $('pager').hidden = none;
+    if (none) {
+      $('emptyIc').innerHTML = C.icon(CASES.length ? 'search' : 'inbox', 'hi-lg', 1.5);
+      $('emptyT').textContent = CASES.length ? 'No cases match these filters' : 'No cases yet';
+      $('emptyD').textContent = CASES.length ? 'Try another status tab or clear the filters.' : 'A case opens here once a salesperson submits an application and every rate is approved.';
+      $('clearBtn').hidden = !(anyFilter || S.tab !== 'all');
+    }
+    $('pgCount').textContent = `${rows.length ? start + 1 : 0}-${Math.min(start + S.per, rows.length)} of ${rows.length}`;
+    $('pgFrac').innerHTML = `<b>${S.page}</b>/${pages}`;
+    $('pgPrev').disabled = S.page <= 1; $('pgNext').disabled = S.page >= pages;
+  }
+
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[data-tab]'); if (t) { S.tab = t.dataset.tab; S.page = 1; render(); return; }
+    const s = e.target.closest('[data-sort]');
+    if (s) { const k = s.dataset.sort; S.sort = S.sort && S.sort.key === k ? (S.sort.dir === 'asc' ? { key: k, dir: 'desc' } : null) : { key: k, dir: 'asc' }; render(); return; }
+    const r = e.target.closest('[data-href]'); if (r) location.href = r.dataset.href;
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') { const r = e.target.closest && e.target.closest('tr[data-href]'); if (r) location.href = r.dataset.href; } });
+  $('topSearch').addEventListener('input', e => { S.q = e.target.value; S.page = 1; render(); });
+  $('rpp').addEventListener('change', e => { S.per = Number(e.target.value); S.page = 1; render(); });
+  $('pgPrev').addEventListener('click', () => { S.page--; render(); });
+  $('pgNext').addEventListener('click', () => { S.page++; render(); });
+  $('clearBtn').addEventListener('click', () => { S.tab = 'all'; S.q = ''; S.assignee = S.owner = ''; $('topSearch').value = ''; S.page = 1; render(); });
+  $('exportBtn').addEventListener('click', () => {
+    const rows = filtered(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const csv = [['Case ID', 'Merchant', 'MID', 'Status', 'Submitted by', 'Assignee', 'Submitted']].concat(rows.map(c =>
+      [c.no, c.app.biz, c.mid, C.STATUS[c.status].label, c.app.actor, c.assignee, c.since.slice(0, 10)])).map(r => r.map(q).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'cases.csv'; a.click();
+    C.toast(`Exported ${rows.length} case${rows.length === 1 ? '' : 's'}.`);
+  });
+
+  { const q = new URLSearchParams(location.search).get('q'); if (q) { S.q = q; $('topSearch').value = q; } }
+  { const m = new URLSearchParams(location.search).get('msg'); if (m) { C.toast(m); history.replaceState(null, '', 'cases.html'); } }
+  render();                                   // skeleton first, then the data
+  setTimeout(() => { CASES = C.all(); S.loading = false; render(); }, 250);
+</script>
+</body>
+</html>

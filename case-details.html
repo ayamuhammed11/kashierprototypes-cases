@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kashier | Case</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="cases.css">
+</head>
+<body>
+  <div class="overlay" id="overlay"></div>
+  <div id="shell-side"></div>
+
+  <main class="main">
+    <div class="topbar" id="shell-top"></div>
+
+    <div class="content detail">
+      <div id="view" hidden>
+        <div class="page-head" style="margin-bottom:24px">
+          <div>
+            <div class="crumbs"><a href="cases.html">Cases</a><span class="sep">/</span><span class="cur" id="crumb"></span></div>
+            <div class="title-row"><h1 id="title"></h1><span class="mid" id="mid"></span><span id="statusChip"></span></div>
+            <p class="sub" id="subline"></p>
+          </div>
+          <div class="head-actions" id="actions"></div>
+        </div>
+
+        <div class="stack">
+          <div id="banner"></div>
+          <div class="grid">
+            <div class="stack">
+              <div class="card">
+                <div class="tabs" id="tabs" role="tablist" style="padding:0 8px"></div>
+                <div class="panel" id="panel"></div>
+              </div>
+            </div>
+            <div class="stack" id="aside"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="notFound" hidden>
+        <div class="empty">
+          <div class="ic" id="nfIc"></div>
+          <div class="t">Case not found</div>
+          <div class="d">This link does not match a case. It opens once an application reaches Underwriting.</div>
+          <a class="btn btn-primary" href="cases.html">Back to Cases</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Reject: a task drawer (reason + flagged items), then a blocking confirm -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer lg" id="rejectDrawer" role="dialog" aria-modal="true" aria-labelledby="rjTitle" tabindex="-1">
+    <div class="handle"></div>
+    <div class="dr-head">
+      <div><h2 id="rjTitle" data-focus tabindex="-1">Reject case</h2><p id="rjDesc"></p></div>
+      <button class="icon-btn" type="button" aria-label="Close" data-close-drawer id="rjClose"></button>
+    </div>
+    <div class="dr-body">
+      <div class="field"><label for="rjReason">Reason for rejecting</label>
+        <textarea class="textarea" id="rjReason" placeholder="What needs fixing? The salesperson sees this on the application."></textarea>
+        <div class="err" id="rjReasonErr" hidden>Add a reason — the salesperson needs to know what to change.</div></div>
+      <div class="field"><span class="lab">Flag what was rejected</span>
+        <span style="font-size:12px;color:var(--muted-foreground)">Items you flagged during review are already ticked. The salesperson sees every ticked item highlighted.</span>
+        <div id="rjItems" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div>
+        <div class="err" id="rjItemsErr" hidden>Give each ticked item its own reason.</div></div>
+    </div>
+    <div class="dr-foot">
+      <button class="btn btn-outline" type="button" data-close-drawer>Cancel</button>
+      <button class="btn btn-destructive" type="button" id="rjSubmit">Reject &amp; return to Sales</button>
+    </div>
+  </aside>
+
+  <aside class="drawer lg" id="docDrawer" role="dialog" aria-modal="true" aria-labelledby="dvTitle" tabindex="-1">
+    <div class="handle"></div>
+    <div class="dr-head"><div><h2 id="dvTitle" data-focus tabindex="-1"></h2><p id="dvDesc"></p></div>
+      <button class="icon-btn" type="button" aria-label="Close" data-close-doc id="dvClose"></button></div>
+    <div class="dr-body" id="dvBody"></div>
+    <div class="dr-foot"><button class="btn btn-outline" type="button" data-close-doc>Close</button><button class="btn btn-primary" type="button" id="dvDownload">Download all</button></div>
+  </aside>
+
+  <aside class="drawer" id="logsDrawer" role="dialog" aria-modal="true" aria-labelledby="lgTitle" tabindex="-1">
+    <div class="handle"></div>
+    <div class="dr-head"><div><h2 id="lgTitle" data-focus tabindex="-1">Activity Log</h2><p id="lgDesc"></p></div>
+      <button class="icon-btn" type="button" aria-label="Close" data-close-logs id="lgClose"></button></div>
+    <div class="dr-body" id="lgBody" style="gap:0"></div>
+  </aside>
+
+  <div class="modal-wrap" id="rejectConfirm"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="rcT" tabindex="-1">
+    <div><h2 id="rcT" data-focus tabindex="-1">Return this application to Sales?</h2><p class="md" id="rcD"></p></div>
+    <div class="modal-foot"><button class="btn btn-outline btn-sm" type="button" data-close-modal>Go back</button><button class="btn btn-destructive btn-sm" type="button" id="rcGo">Reject &amp; return</button></div>
+  </div></div>
+
+  <div class="modal-wrap" id="approveModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="apT" tabindex="-1">
+    <div><h2 id="apT" data-focus tabindex="-1">Approve and send to the bank</h2><p class="md" id="apD"></p></div>
+    <div class="panelbox"><div class="lab" style="font-size:12px;font-weight:600;color:var(--cadet-base)">Going to the bank</div><ul id="apBanks"></ul></div>
+    <p class="md" style="margin:0">The case moves to <b>Bank Submission</b> until the bank or vendor approval and credentials arrive. The salesperson is emailed.</p>
+    <div class="modal-foot"><button class="btn btn-outline btn-sm" type="button" data-close-modal>Cancel</button><button class="btn btn-success btn-sm" type="button" id="apGo">Approve &amp; send to bank</button></div>
+  </div></div>
+
+
+<script src="rate-decisions.js"></script>
+<script src="cases-core.js"></script>
+<script>
+  const C = Cases, K = C.K, esc = C.esc, $ = id => document.getElementById(id);
+  C.mountShell({ search: false });
+  $('rjClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('dvClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('lgClose').innerHTML = C.icon('x', 'hi-lg', 1.5);
+  const APP_ID = new URLSearchParams(location.search).get('app') || '';
+  let tab = 'business', flagFor = '', payRejectFor = '';
+
+  const cur = () => C.get(APP_ID);
+  const kv = (k, v, html) => `<div class="kv"><div class="k">${esc(k)}</div><div class="v">${html ? v : esc(v || '—')}</div></div>`;
+  const crow = (k, v, html) => `<div class="crow"><span class="k">${esc(k)}</span><span class="v">${html ? v : esc(v || '—')}</span></div>`;
+  const isOpen = c => c.status === 'submitted';
+  const filesOf = d => String(d.file || '').split(',').map(x => x.trim()).filter(Boolean);
+  const isImg = f => /\.(jpe?g|png|gif|webp)$/i.test(f);
+
+  /* ── Header, banner ── */
+  function renderHead(c) {
+    document.title = 'Kashier | ' + c.no;
+    $('crumb').textContent = c.no;
+    $('title').textContent = c.app.biz;
+    $('mid').textContent = c.mid || 'MID pending';
+    $('statusChip').innerHTML = C.chip(c.status);
+    $('subline').textContent = `Case ID ${c.no} · submitted by ${c.app.actor} on ${C.fmtDate(c.app.ts)}` + (c.resubmission ? ` · resubmission of ${c.resubmission}` : '');
+    const p = C.progress(c), mine = c.assignee === C.ME.name;
+    let h = '';
+    if (isOpen(c)) {
+      h += `<button class="btn btn-destructive-outline" type="button" id="rejectBtn">${C.icon('x', 'hi-18', 2)}Reject</button>`;
+      h += `<button class="btn btn-primary" type="button" id="approveBtn"${p.ready ? '' : ' disabled'} title="${p.ready ? '' : 'Review every item first — ' + (p.total - p.done) + ' left'}">${C.icon('check', 'hi-18', 2)}Approve</button>`;
+    }
+    h += `<button class="btn btn-outline" type="button" id="logsBtn">${C.icon('doc')}View logs</button>`;
+    $('actions').innerHTML = h;
+
+    const rec = c.record, p2 = C.progress(c);
+    const B = {
+      submitted: p2.flagged.length
+        ? ['warning', 'exclCircle', `${p2.flagged.length} item${p2.flagged.length === 1 ? '' : 's'} flagged`, 'Approval stays blocked while anything is flagged. Clear a flag once it is resolved, or reject the case and return it to Sales.']
+        : ['info', 'info', 'Underwriting review', `Review the business details, every document, the pricing, the payout methods${(c.app.contracts || []).length ? ' and the contracts' : ''}. Approve once all ${p2.total} items are verified — or reject the case with a reason.`],
+      'pending-configurations': ['warning', 'clock', 'Submitted to the bank', `Approved by ${rec.by || C.ME.name}${rec.approvedTs ? ' on ' + C.fmtDate(rec.approvedTs) : ''}. It is already submitted and is waiting for the bank or vendor approval and credentials. The case leaves this list once the account is live.`],
+      rejected: ['error', 'exclCircle', 'Rejected — back with ' + c.app.actor, `${esc(rec.by)} rejected this case on ${C.fmtDate(rec.ts)}: ${esc(rec.reason)}. A resubmission opens a new case.`],
+      live: ['success', 'checkCircle', 'Live', `Live since ${C.fmtDate(rec.ts)}. This account is now worked from the Merchant module.`],
+    }[c.status];
+    $('banner').innerHTML = `<div class="alert ${B[0]}" role="status">${C.icon(B[1], 'hi-lg', 1.5)}<div class="at"><b>${esc(B[2])}</b><span>${B[3]}</span></div></div>`;
+  }
+
+  /* ── Tabs ── */
+  function tabList(c) {
+    const st = k => { const x = C.progress(c).list.filter(i => i.tab === k); return x.some(i => i.state === 'flag') ? 'flag' : x.length && x.every(i => i.state === 'ok') ? 'ok' : ''; };
+    // Every step of the application, required and optional, in the order Sales fills them in.
+    const req = C.contractsRequired(c.app);
+    const t = [['business', 'Business details', ''], ['pricing', 'Services & pricing', ''], ['documents', 'Documents', ''], ['payout', 'Payout method', 'Optional'], ['contracts', 'Contracts', req ? 'Required' : 'Optional']];
+    return t.map(([k, label, tag]) => [k, label, st(k), tag]);
+  }
+  function renderTabs(c) {
+    $('tabs').innerHTML = tabList(c).map(([k, label, st, tag]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" role="tab" aria-selected="${tab === k}" data-tab="${k}">${esc(label)}${tag ? `<span class="muted" style="font-size:12px;font-weight:400">${tag}</span>` : ''}${st ? `<span class="tab-dot ${st}" title="${st === 'ok' ? 'Verified' : 'Flagged'}"></span>` : ''}</button>`).join('');
+  }
+
+  /* ── Review controls (verify / flag, inline reason) ── */
+  function controls(c, key, label, tabName) {
+    if (!isOpen(c)) return '';
+    const r = (c.local.review[key] || {}), prob = flagFor === key;
+    const act = r.state === 'ok' ? `<span class="chip positive">Verified</span><button class="link-btn" type="button" data-clear="${esc(key)}" data-label="${esc(label)}">Undo</button>`
+      : r.state === 'flag' ? `<span class="chip negative">Flagged</span>`
+      : `<button class="btn btn-outline btn-sm" type="button" data-flag-open="${esc(key)}">${C.icon('flag', 'hi-sm')}Flag</button><button class="btn btn-success btn-sm" type="button" data-verify="${esc(key)}" data-label="${esc(label)}">${C.icon('check', 'hi-sm', 2)}Verify</button>`;
+    return { act: act, after: (r.state === 'flag' ? `<div class="flagnote"><span><b>Flagged:</b> ${esc(r.reason)}</span><button class="link-btn" type="button" data-clear="${esc(key)}" data-label="${esc(label)}">Clear flag</button></div>` : '')
+      + (prob ? `<div class="flagform"><input class="input sm" id="flagReason" placeholder="Why is this a problem?" aria-label="Reason" data-focus><button class="btn btn-destructive btn-sm" type="button" data-flag-save="${esc(key)}" data-label="${esc(label)}">Flag</button><button class="btn btn-ghost btn-sm" type="button" data-flag-cancel>Cancel</button></div>` : '') };
+  }
+  function rrow(c, key, label, sub, ic, extraAct) {
+    const ctl = controls(c, key, label) || { act: '', after: '' }, st = (c.local.review[key] || {}).state || '';
+    return `<div class="rrow ${st}"><div class="rrow-main"><div class="rrow-ic">${C.icon(ic)}</div><div class="rrow-info"><div class="n">${esc(label)}</div>${sub ? `<div class="f">${esc(sub)}</div>` : ''}</div>
+      <div class="rrow-act">${extraAct || ''}${ctl.act}</div></div>${ctl.after}</div>`;
+  }
+  function reviewBar(c, key, label) {
+    if (!isOpen(c)) return '';
+    const r = c.local.review[key] || {}, ctl = controls(c, key, label);
+    const text = r.state === 'ok' ? `<span class="st" style="color:var(--success-text)">${C.icon('checkCircle')}${esc(label)} verified</span>` : r.state === 'flag' ? `<span class="st" style="color:var(--destructive)">${C.icon('flag')}${esc(label)} flagged</span>` : `<span class="st" style="color:var(--cadet-base)">${C.icon('info')}Not reviewed yet</span>`;
+    return `<div class="review-bar">${text}<div class="rrow-act">${ctl.act}</div></div>${ctl.after.replace('class="flagform"', 'class="flagform" style="padding:0"').replace('class="flagnote"', 'class="flagnote" style="padding:0"')}`;
+  }
+
+  /* ── Panels ── */
+  function panelBusiness(c) {
+    const app = c.app, s = app.summary, sites = app.websites && app.websites.length ? app.websites : (app.website ? [app.website] : []);
+    const store = (app.documents || []).find(d => d.name === 'Store Image');
+    return `<h2 class="sec-title">Business details</h2>
+      <div class="note" style="background:var(--ocean-10)"><b>Comment from ${esc(app.actor)} when submitting</b>${app.comment ? esc(app.comment) : '<span class="muted">No comment was added.</span>'}</div>
+      <div class="kv-grid">
+        ${kv('Business name', app.biz)}${kv('Kashier MID', c.mid)}${kv('Merchant type', s.entity)}${kv('Industry (primary)', s.industry)}
+        ${(app.altIndustries || []).length ? kv('Activities', app.altIndustries.map((a, i) => `<div>${i + 1}. ${esc(a.activity || a.industry)}</div>`).join(''), true) : ''}
+        ${kv('Contact email', s.email)}${kv('Contact phone', s.phone)}
+        ${kv('Tax invoice', app.taxInvoice ? 'Needed — Tax Identification Card uploaded' : 'Not needed')}
+        ${sites.length ? kv(sites.length > 1 ? 'Website / social links' : 'Website / social link', sites.map(u => `<a href="${esc(/^https?:/i.test(u) ? u : 'https://' + u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join('<br>'), true) : ''}
+        ${s.posTerminals ? kv('POS terminals requested', s.posTerminals) : ''}
+      </div>
+      <div class="sub-h">Sales application</div>
+      <div class="kv-grid">
+        ${kv('Submitted by', app.actor)}${kv('Submitted', C.fmtDateTime(app.ts))}
+        ${kv('Lead', app.leadId ? `<a href="${K.applicationURL(app.leadId)}">${esc(app.leadId)}</a>` : '—', true)}
+        ${kv('Application', `<a href="${K.applicationURL(app.leadId)}">${esc(app.id)}</a>`, true)}
+      </div>
+      ${s.posTerminals ? `<div class="sub-h">Store image</div>
+        <button class="rrow" type="button" data-view-doc="${esc(store ? store.name : '')}" style="text-align:start;cursor:pointer;background:#fff"${store ? '' : ' disabled'}>
+          <div class="rrow-main"><div class="rrow-ic" style="width:64px;height:64px">${C.icon('store', 'hi-lg')}</div><div class="rrow-info"><div class="n">${store ? esc(store.file || 'Store image') : 'No store image was uploaded'}</div><div class="f">Photo of the storefront where the ${esc(s.posTerminals)} POS terminal${s.posTerminals === '1' ? ' is' : 's are'} used${store ? ' — click to view' : ''}</div></div></div></button>` : ''}
+      ${reviewBar(c, 'business', 'Business details')}`;
+  }
+  function panelDocuments(c) {
+    const docs = c.app.documents || [];
+    if (!docs.length) return `<h2 class="sec-title">Documents</h2><div class="empty">${''}<div class="t">No documents were uploaded</div><div class="d">${esc(c.app.summary.docsDone)} of ${esc(c.app.summary.docsTotal)} documents came with this application.</div></div>`;
+    return `<h2 class="sec-title">Documents</h2><p class="sec-sub">${docs.length} document${docs.length === 1 ? '' : 's'} uploaded by ${esc(c.app.actor)} with the application.</p>
+      <div style="display:flex;flex-direction:column;gap:12px">${docs.map(d => rrow(c, C.docKey(d), d.name, filesOf(d).join(', '), 'doc', `<button class="btn btn-outline btn-sm" type="button" data-view-doc="${esc(d.name)}">${C.icon('doc', 'hi-sm')}View</button><button class="btn btn-ghost btn-sm" type="button" data-download="${esc(d.name)}">${C.icon('download', 'hi-sm')}Download</button>`)).join('')}</div>`;
+  }
+  function panelPricing(c) {
+    const app = c.app, configs = app.summary.serviceConfigs || [], decisions = K.decisionsFor(app.id), cards = [];
+    configs.forEach(sc => (sc.configs || [{ bank: '', module: '' }]).forEach(cfg => {
+      if (sc.service === 'Transfers') {
+        const t = app.transfers || { fees: {} };
+        const fees = [['wallet', 'Wallet'], ['bank', 'Bank'], ['card', 'Card']].map(([k, l]) => { const f = (t.fees || {})[k] || {};
+          return `<div class="cfg-rate"><span>${l}</span><span class="pct">${esc(f.percentage || '—')}% + ${esc(f.flat || '—')}</span><span></span></div>`; }).join('');
+        cards.push(`<div class="cfg-card"><div class="cfg-head">Transfers</div><div class="cfg-rows">${kv('Financial institution', cfg.bank)}${kv('Version', cfg.module)}</div><div class="cfg-rates">${fees}</div></div>`);
+        return;
+      }
+      const lines = app.requests.filter(r => r.service === sc.service && (r.bank || '') === (cfg.bank || ''));
+      const rates = lines.map(l => { const d = decisions[l.id];
+        const chip = d ? `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span>` : `<span class="chip warning">With ${esc(K.TIER_OWNER[l.tier])}</span>`;
+        const fee = l.requestedFee != null ? ` + ${esc(l.requestedFee)} EGP` : '', stdFee = l.standardFee != null ? ` + ${esc(l.standardFee)} EGP` : '';
+        return `<div class="cfg-rate"><span>${esc(l.rate)}${l.note ? `<span class="std" style="font-style:italic;white-space:normal">Sales note: “${esc(l.note)}”</span>` : ''}</span><span><span class="pct">${esc(l.requested)}%${fee}</span><span class="std">standard ${esc(l.standard)}%${stdFee}</span></span><span>${chip}${d ? `<span class="std" style="white-space:normal">${esc(d.by)}${d.reason ? ' — ' + esc(d.reason) : ''}</span>` : ''}</span></div>`; }).join('');
+      cards.push(`<div class="cfg-card"><div class="cfg-head">${esc(sc.service)}</div>
+        <div class="cfg-rows">${kv('Settlement type', cfg.module)}${kv('Financial institution', cfg.bank || 'Not required')}</div>
+        ${rates ? `<div class="cfg-rates">${rates}</div>` : ''}<div class="cfg-foot">${rates ? 'All other rates at standard pricing.' : 'All rates at standard pricing.'}</div></div>`);
+    }));
+    return `<h2 class="sec-title">Services &amp; pricing</h2><p class="sec-sub">Every requested rate, with the note Sales left and the rate-approval decision it came through with.</p>
+      ${cards.length ? `<div style="display:flex;flex-direction:column;gap:12px">${cards.join('')}</div>` : `<div class="empty"><div class="t">No services were submitted</div></div>`}
+      ${reviewBar(c, 'pricing', 'Services & pricing')}`;
+  }
+  const PV = { 'pending-ops': ['warning', 'Awaiting your approval'], 'awaiting-merchant': ['neutral', 'Awaiting merchant verification'], verified: ['positive', 'Verified'], rejected: ['negative', 'Rejected'] };
+  function panelPayout(c) {
+    const po = C.payoutState(c.app);
+    if (!po.n) return `<h2 class="sec-title">Payout methods</h2><div class="empty"><div class="t">No payout method was added</div><div class="d">This step is optional. The merchant can add one after going live.</div></div>`;
+    const cards = po.states.map(a => {
+      const v = a.verification, [tone, label] = PV[v.state], d = a.details;
+      const rows = d.method === 'wallet' ? kv('Method', 'E-Wallet') + kv('Wallet provider', d.provider) + kv('Wallet mobile number', d.number) + kv('Wallet holder name', d.holder)
+        : kv('Method', 'Bank account') + kv('Bank name', d.bankName) + kv('Bank branch', d.branch) + kv('Account holder name', d.holder) + kv('Account number', d.account);
+      let foot = '';
+      if (v.state === 'pending-ops' && isOpen(c)) foot = `<div class="pv"><div class="pv-text">Approve it so the merchant can verify it with an emailed code, or reject it with a reason.</div><div class="rrow-act">
+          <button class="btn btn-destructive-outline btn-sm" type="button" data-pm-open="${esc(a.accId)}">Reject</button><button class="btn btn-success btn-sm" type="button" data-pm-ok="${esc(a.accId)}">Approve</button></div></div>`
+        + (payRejectFor === a.accId ? `<div class="flagform" style="padding:0 16px 12px"><input class="input sm" id="pmReason" placeholder="Why is this payout method rejected?" aria-label="Reason" data-focus><button class="btn btn-destructive btn-sm" type="button" data-pm-save="${esc(a.accId)}">Reject method</button><button class="btn btn-ghost btn-sm" type="button" data-pm-cancel>Cancel</button></div>` : '');
+      else if (v.state === 'pending-ops') foot = `<div class="pv"><div class="pv-text">Reviewed once the case is in Underwriting Review.</div></div>`;
+      else if (v.state === 'awaiting-merchant') foot = `<div class="pv"><div class="pv-text"><b>Approved</b> by ${esc(v.opsBy)} · ${C.fmtDateTime(v.opsTs)}. Verification email sent to ${esc(v.email || 'the contact email')}.</div></div>`;
+      else if (v.state === 'verified') foot = `<div class="pv"><div class="pv-text"><b>Verified by the merchant</b> · ${C.fmtDateTime(v.verifiedTs)}</div></div>`;
+      else foot = `<div class="pv"><div class="pv-text" style="color:var(--destructive)"><b>Rejected</b> by ${esc(v.opsBy)} · ${C.fmtDateTime(v.opsTs)}<br><b>Reason:</b> ${esc(v.reason)}</div></div>`;
+      return `<div class="cfg-card"><div class="cfg-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>${esc(a.account)}${a.primary ? ' <span class="chip positive" style="margin-inline-start:6px">Primary</span>' : ''} <span class="muted" style="font-weight:400;font-size:12px;margin-inline-start:6px">${esc(a.accId)}</span></span><span class="chip ${tone}">${label}</span></div>
+        <div class="cfg-rows" style="grid-template-columns:repeat(2,minmax(0,1fr))">${rows}</div>${foot}</div>`;
+    }).join('');
+    const note = po.pending && isOpen(c) ? `<div class="alert warning">${C.icon('warn', 'hi-lg')}<div class="at"><span><b>${po.pending} payout method${po.pending === 1 ? '' : 's'} waiting for your decision.</b> The case can be approved once each one is approved or rejected.</span></div></div>` : '';
+    return `<h2 class="sec-title">Payout methods</h2>${note}<div style="display:flex;flex-direction:column;gap:12px">${cards}</div>`;
+  }
+  function panelContracts(c) {
+    const list = c.app.contracts || [];
+    if (!list.length) return `<h2 class="sec-title">Contracts</h2><div class="empty"><div class="t">No contracts were uploaded</div><div class="d">${C.contractsRequired(c.app) ? 'A signed PF contract is required for this application.' : 'Contracts are optional for this application.'}</div></div>`;
+    return `<h2 class="sec-title">Contracts</h2><p class="sec-sub">${list.length} contract${list.length === 1 ? '' : 's'} uploaded with the application.</p>
+      <div style="display:flex;flex-direction:column;gap:12px">${list.map((k, i) => rrow(c, C.conKey(k, i), C.conName(k, i), (k.file || '') + (k.required ? ' · required' : ''), 'doc', `<button class="btn btn-outline btn-sm" type="button" data-view-doc="${esc(C.conName(k, i))}" data-contract="${i}">${C.icon('doc', 'hi-sm')}View</button><button class="btn btn-ghost btn-sm" type="button" data-download="${esc(C.conName(k, i))}">${C.icon('download', 'hi-sm')}Download</button>`)).join('')}</div>`;
+  }
+  function panelActivity(c) {
+    const ev = C.activity(c);
+    return `<h2 class="sec-title">Activity</h2>` + (ev.length ? `<div>${ev.map(e => `<div class="log-item ${e.tone || ''}"><span class="log-dot"></span><div><div class="log-text">${esc(e.text)}</div><div class="log-meta">${esc(e.who || '')} · ${C.fmtDateTime(e.ts)}</div></div></div>`).join('')}</div>` : '<div class="empty"><div class="t">No activity yet</div></div>');
+  }
+
+  /* ── Aside: summary, checklist, notes ── */
+  function renderAside(c) {
+    const p = C.progress(c), l = c.local;
+    const assign = C.user().canReassign
+      ? `<select class="select" id="assignSel" aria-label="Assignee" style="height:32px;font-size:13px;width:auto;max-width:170px">${C.TEAM.map(n => `<option ${l.assignee === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
+      : esc(l.assignee || '—') + `<span class="muted" style="display:block;font-size:11px;font-weight:400">Only an Underwriting Manager can reassign</span>`;
+    const summary = `<div class="card"><div class="card-body">${crow('Assignee', assign, true)}</div></div>`;
+    const stText = { ok: 'Verified', flag: 'Flagged', todo: 'Not reviewed', na: 'Not provided' };
+    const checklist = isOpen(c) ? `<div class="card"><div class="card-head"><h3>Review checklist</h3><span style="font-size:12px;color:var(--cadet-base)">${p.done} of ${p.total}</span></div><div class="card-body">
+      <div class="progress" role="progressbar" aria-valuenow="${p.done}" aria-valuemin="0" aria-valuemax="${p.total}"><i style="width:${p.total ? p.done / p.total * 100 : 0}%"></i></div>
+      <div class="cl">${p.list.map(i => `<button type="button" data-go="${i.tab}"><span class="ckdot ${i.state === 'todo' || i.state === 'na' ? '' : i.state}">${i.state === 'ok' ? C.icon('check', 'hi-xs', 3) : i.state === 'flag' ? C.icon('x', 'hi-xs', 3) : ''}</span><span>${esc(i.label)}${i.optional ? ' <span class="muted" style="font-size:12px">(optional)</span>' : ''}</span><span class="st ${i.state}">${stText[i.state]}</span></button>`).join('')}</div></div></div>` : '';
+    const notes = `<div class="card"><div class="card-head"><h3>Internal notes</h3></div><div class="card-body">
+      <div class="field"><textarea class="textarea" id="noteText" style="min-height:72px" placeholder="Visible to Underwriting only" aria-label="Internal note"></textarea></div>
+      <button class="btn btn-outline btn-sm" type="button" id="noteAdd" style="align-self:flex-end">${C.icon('chat', 'hi-sm')}Add note</button>
+      ${l.notes.map(n => `<div class="note">${esc(n.text)}<span class="m">${esc(n.who)} · ${C.fmtDateTime(n.ts)}</span></div>`).join('')}</div></div>`;
+    $('aside').innerHTML = summary + checklist + notes;
+  }
+
+  function render() {
+    const c = cur();
+    $('view').hidden = !c; $('notFound').hidden = !!c;
+    if (!c) { $('nfIc').innerHTML = C.icon('inbox', 'hi-lg'); return; }
+    if (!tabList(c).some(t => t[0] === tab)) tab = 'business';
+    renderHead(c); renderTabs(c);
+    $('panel').innerHTML = { business: panelBusiness, documents: panelDocuments, pricing: panelPricing, payout: panelPayout, contracts: panelContracts }[tab](c);
+    renderAside(c);
+    const f = document.querySelector('#panel [data-focus]'); if (f) f.focus();
+  }
+
+  /* ── Events ── */
+  document.addEventListener('click', e => {
+    const c = cur(); if (!c) return;
+    const g = (sel) => e.target.closest(sel);
+    let b;
+    if ((b = g('[data-tab]'))) { tab = b.dataset.tab; flagFor = payRejectFor = ''; render(); return; }
+    if ((b = g('[data-go]'))) { tab = b.dataset.go; flagFor = payRejectFor = ''; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if ((b = g('[data-verify]'))) { C.setReview(c.app, b.dataset.verify, 'ok', '', b.dataset.label); render(); return; }
+    if ((b = g('[data-clear]'))) { C.setReview(c.app, b.dataset.clear, 'todo', '', b.dataset.label); render(); return; }
+    if ((b = g('[data-flag-open]'))) { flagFor = b.dataset.flagOpen; render(); return; }
+    if (g('[data-flag-cancel]')) { flagFor = ''; render(); return; }
+    if ((b = g('[data-flag-save]'))) {
+      const inp = $('flagReason'), v = inp.value.trim();
+      if (!v) { inp.classList.add('invalid'); inp.focus(); return; }
+      flagFor = ''; C.setReview(c.app, b.dataset.flagSave, 'flag', v, b.dataset.label); render(); return;
+    }
+    if ((b = g('[data-view-doc]'))) { viewDoc(c, b.dataset.viewDoc, b.dataset.contract, b); return; }
+    if (g('#logsBtn')) { openLogs(c, g('#logsBtn')); return; }
+    if (g('[data-close-logs]')) { C.closeDrawer('logsDrawer'); return; }
+    if (g('[data-close-doc]')) { C.closeDrawer('docDrawer'); return; }
+    if ((b = g('[data-download]'))) { C.toast('Downloading ' + b.dataset.download + ' (prototype — no file is stored).'); return; }
+    if ((b = g('[data-pm-ok]'))) { if (K.reviewPayoutMethod({ app: c.app, accId: b.dataset.pmOk, role: 'onboarding', decision: 'approved' })) { render(); C.toast('Payout method approved. The merchant was emailed a verification code.'); } return; }
+    if ((b = g('[data-pm-open]'))) { payRejectFor = b.dataset.pmOpen; render(); return; }
+    if (g('[data-pm-cancel]')) { payRejectFor = ''; render(); return; }
+    if ((b = g('[data-pm-save]'))) {
+      const inp = $('pmReason'), v = inp.value.trim();
+      if (!v) { inp.classList.add('invalid'); inp.focus(); return; }
+      if (K.reviewPayoutMethod({ app: c.app, accId: b.dataset.pmSave, role: 'onboarding', decision: 'rejected', reason: v })) { payRejectFor = ''; render(); C.toast('Payout method rejected.'); }
+      return;
+    }
+    if (g('#noteAdd')) { const t = $('noteText').value.trim(); if (!t) { $('noteText').classList.add('invalid'); $('noteText').focus(); return; } C.addNote(c.app, t); render(); return; }
+    if (g('#approveBtn')) { openApprove(c, g('#approveBtn')); return; }
+    if (g('#rejectBtn')) { openReject(c, g('#rejectBtn')); return; }
+    if (g('[data-close-drawer]') || g('#scrim')) { C.closeDrawer('rejectDrawer'); C.closeDrawer('docDrawer'); C.closeDrawer('logsDrawer'); return; }
+    if (g('[data-close-modal]')) { C.closeModal(g('.modal-wrap').id); return; }
+    if (e.target.classList && e.target.classList.contains('modal-wrap')) C.closeModal(e.target.id);
+  });
+  document.addEventListener('change', e => {
+    if (e.target.id === 'assignSel') { const c = cur(); if (C.assign(c.app, e.target.value)) C.toast('Case reassigned to ' + e.target.value + '.'); render(); }
+  });
+  document.addEventListener('input', e => { if (e.target.classList) e.target.classList.remove('invalid'); });
+
+  /* Document viewer: every file uploaded for a document. The prototype keeps file names only, so each file is drawn
+     as a page (or an image frame) carrying its name. */
+  function viewDoc(c, name, contractIdx, trigger) {
+    const doc = contractIdx != null && contractIdx !== '' ? (c.app.contracts || [])[Number(contractIdx)] : (c.app.documents || []).find(d => d.name === name);
+    const files = doc ? filesOf(doc) : [];
+    $('dvTitle').textContent = name;
+    $('dvDesc').textContent = `${files.length} file${files.length === 1 ? '' : 's'} uploaded by ${c.app.actor}`;
+    $('dvBody').innerHTML = files.length ? files.map(f => `<div><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:14px"><b style="overflow-wrap:anywhere">${esc(f)}</b><span class="muted">${isImg(f) ? 'Image' : 'PDF'}</span></div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);aspect-ratio:${isImg(f) ? '4 / 3' : '3 / 4'};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--cadet-05);text-align:center;padding:16px">
+        ${C.icon(isImg(f) ? 'store' : 'doc', 'hi-lg')}<span style="font-size:13px">Preview of ${esc(f)}</span><span style="font-size:12px">Prototype — the uploaded file content is not stored.</span></div></div>`).join('')
+      : '<div class="empty"><div class="t">No file was uploaded</div></div>';
+    $('dvDownload').onclick = () => C.toast('Downloading ' + name + ' (prototype — no file is stored).');
+    C.openDrawer('docDrawer', trigger);
+  }
+
+  /* Logs: everything that happened on the case, newest first, in a drawer. */
+  /* The Kashier activity log: an icon per event, the time, then a sentence saying who did what, with old and new
+     values for changes; five events a page with the compact pager below. */
+  let logPage = 1, logPer = 5, logCase = null;
+  const p2 = n => String(n).padStart(2, '0');
+  const evStamp = iso => { const d = new Date(iso), h = d.getHours() % 12 || 12; return `${p2(d.getMonth() + 1)}/${p2(d.getDate())}/${d.getFullYear()}. ${p2(h)}:${p2(d.getMinutes())}:${p2(d.getSeconds())} ${d.getHours() >= 12 ? 'PM' : 'AM'}`; };
+  const ICON_OF = { Added: ['add', 'plus'], Removed: ['del', 'trash'], Changed: ['', 'pencil'], Uploaded: ['', 'upload'], Approved: ['ok', 'checkCircle'], Verified: ['ok', 'checkCircle'],
+    Live: ['ok', 'checkCircle'], Advanced: ['', 'plane'], Submitted: ['', 'plane'], Resubmitted: ['', 'plane'], Sent: ['', 'mail'], Rejected: ['no', 'xCircle'], Returned: ['no', 'xCircle'],
+    Canceled: ['no', 'xCircle'], Flagged: ['no', 'flag'], Assigned: ['', 'user'], Note: ['', 'chat'] };
+  const lc = t => t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
+  const sentenceOf = e => {
+    const who = `<b>${esc(e.who || '')}</b>`, text = e.text || '', after = text.split(' \u2014 ').slice(1).join(' \u2014 ');
+    switch (e.action) {
+      case 'Submitted': return `${who} submitted the application`;
+      case 'Resubmitted': return `${who} resubmitted the application with revised rates`;
+      case 'Returned': return `${who} returned the application to the salesperson`;
+      case 'Advanced': return `${who} sent the application to Underwriting Review`;
+      case 'Canceled': return `${who} canceled the application`;
+      case 'Live': return `${who} made the account live`;
+      case 'Approved': case 'Rejected': {
+        const verb = e.action === 'Approved' ? 'approved' : 'rejected';
+        if (e.category === 'Rates') return `${who} ${verb} the rate <b>${esc(text)}</b>`;
+        if (e.category === 'Payout') return `${who} ${verb} the payout method${after ? ' \u2014 <b>' + esc(after) + '</b>' : ''}`;
+        return `${who} ${verb} the application${e.action === 'Approved' ? ' internally and sent it to the bank' : ''}`;
+      }
+      default: { const [head, ...rest] = text.split(' \u2014 '); return `${who} ${esc(lc(head))}${rest.length ? ' \u2014 <b>' + esc(rest.join(' \u2014 ')) + '</b>' : ''}`; }
+    }
+  };
+  const evCardHTML = e => {
+    const rows = e.details || [], dash = v => v === '' || v == null ? '\u2014' : v, who = `<b>${esc(e.who || '')}</b>`;
+    const facts = rows.filter(r => r.from == null && !r.item && ['Requested', 'Published', 'Decision comment', 'Reason', 'Comment'].includes(r.label)).map(r => `<b>${esc(r.label)}</b>: ${esc(dash(r.value))}`);
+    const flagged = rows.filter(r => r.item).map(r => `${who} rejected the ${esc(r.item.toLowerCase())} <b>${esc(r.label)}</b> \u2014 ${esc(r.value)}`);
+    const changes = rows.filter(r => r.from != null).map(r => `${who} changed <b>${esc(r.label)}</b> from <b>${esc(dash(r.from))}</b> to <b>${esc(dash(r.to))}</b>`);
+    const [cls, ic] = ICON_OF[e.action] || ['', 'list'];
+    return `<div class="ev-card"><div class="ev-ic ${cls}">${C.icon(ic, 'hi-18', 1.5)}</div><div class="ev-main"><div class="ev-when">${esc(evStamp(e.ts))}</div>${[sentenceOf(e)].concat(facts, flagged, changes).map(l => `<div class="ev-line">${l}</div>`).join('')}</div></div>`;
+  };
+  function renderLog() {
+    const all = C.activity(logCase), pages = Math.max(1, Math.ceil(all.length / logPer));
+    logPage = Math.min(Math.max(1, logPage), pages);
+    const from = (logPage - 1) * logPer, shown = all.slice(from, from + logPer);
+    $('lgDesc').textContent = `${logCase.app.biz} \u00b7 ${all.length} event${all.length === 1 ? '' : 's'}`;
+    $('lgBody').innerHTML = `<h3 class="ev-title">${C.icon('list', 'hi-sm', 1.5)}Events</h3>` + (all.length ? shown.map(evCardHTML).join('') + `<div class="ev-foot"><span>${from + 1} - ${from + shown.length} of ${all.length}</span>
+      <span class="ev-pager">Rows per page: <select id="evPer">${[5, 10, 25].map(n => `<option${n === logPer ? ' selected' : ''}>${n}</option>`).join('')}</select>
+        <button class="pg-btn" type="button" data-ev-page="-1"${logPage <= 1 ? ' disabled' : ''} aria-label="Previous page">${C.icon('left', 'hi-sm', 2)}</button>
+        <span><b>${logPage}</b>/${pages}</span>
+        <button class="pg-btn" type="button" data-ev-page="1"${logPage >= pages ? ' disabled' : ''} aria-label="Next page">${C.icon('right', 'hi-sm', 2)}</button></span></div>`
+      : '<div class="empty"><div class="t">No log entries found</div></div>');
+  }
+  $('lgBody').addEventListener('click', e => { const b = e.target.closest('[data-ev-page]'); if (b) { logPage += Number(b.dataset.evPage); renderLog(); } });
+  $('lgBody').addEventListener('change', e => { if (e.target.id === 'evPer') { logPer = Number(e.target.value); logPage = 1; renderLog(); } });
+  function openLogs(c, trigger) { logCase = c; logPage = 1; renderLog(); C.openDrawer('logsDrawer', trigger); }
+
+  /* Approve: modal confirm */
+  function openApprove(c, trigger) {
+    $('apD').innerHTML = `Approve <b>${esc(c.app.biz)}</b> internally and send the application to the bank to continue onboarding.`;
+    const banks = [];
+    (c.app.summary.serviceConfigs || []).forEach(sc => (sc.configs || []).forEach(x => banks.push(`${sc.service}${x.bank ? ' — ' + x.bank : ''}${x.module ? ' (' + x.module + ')' : ''}`)));
+    $('apBanks').innerHTML = banks.length ? banks.map(b => `<li>${esc(b)}</li>`).join('') : '<li>No bank-linked services</li>';
+    C.openModal('approveModal', trigger);
+  }
+  $('apGo').addEventListener('click', () => {
+    const c = cur(); C.closeModal('approveModal');
+    if (c && C.approve(c.app)) { render(); C.toast(`${c.app.biz} approved and sent to the bank.`); }
+  });
+
+  /* Reject: drawer (flagged items prefilled), then a blocking confirm */
+  let rjItems = [];
+  function openReject(c, trigger) {
+    const p = C.progress(c);
+    const sectionName = { business: 'Business details', pricing: 'Services & pricing', payout: 'Payout methods' };
+    rjItems = p.list.map(i => {
+      const isDoc = i.key.startsWith('doc:'), isCon = i.key.startsWith('con:');
+      return { key: i.key, type: isDoc ? 'Document' : 'Section', name: isDoc ? i.label : isCon ? 'Contracts' : sectionName[i.key], label: i.label, on: i.state === 'flag', reason: i.state === 'flag' ? i.reason : '' };
+    });
+    // Contracts are one section however many were uploaded.
+    rjItems = rjItems.filter((x, i) => !(x.name === 'Contracts' && rjItems.findIndex(y => y.name === 'Contracts') !== i));
+    $('rjDesc').textContent = `${c.app.biz} goes back to ${c.app.actor} with your reason.`;
+    $('rjReason').value = ''; $('rjReasonErr').hidden = true; $('rjItemsErr').hidden = true;
+    $('rjItems').innerHTML = rjItems.map((x, i) => `<div class="pick ${x.on ? 'on' : ''}" data-i="${i}"><label><input type="checkbox" ${x.on ? 'checked' : ''}> ${esc(x.label)}<small>${x.type}</small></label>
+      <div class="why" ${x.on ? '' : 'hidden'}><input class="input sm" placeholder="Why was this rejected?" value="${esc(x.reason)}" aria-label="Reason for ${esc(x.label)}"></div></div>`).join('');
+    C.openDrawer('rejectDrawer', trigger);
+  }
+  $('rjItems').addEventListener('change', e => {
+    const row = e.target.closest('.pick'); if (!row) return;
+    row.classList.toggle('on', e.target.checked); row.querySelector('.why').hidden = !e.target.checked; $('rjItemsErr').hidden = true;
+    if (e.target.checked) row.querySelector('input[type=text], .why input').focus();
+  });
+  $('rjSubmit').addEventListener('click', () => {
+    const reason = $('rjReason').value.trim();
+    if (!reason) { $('rjReason').classList.add('invalid'); $('rjReasonErr').hidden = false; $('rjReason').focus(); return; }
+    const rows = [...$('rjItems').querySelectorAll('.pick.on')];
+    const missing = rows.filter(r => !r.querySelector('.why input').value.trim());
+    if (missing.length) { missing.forEach(r => r.querySelector('.why input').classList.add('invalid')); $('rjItemsErr').hidden = false; missing[0].querySelector('.why input').focus(); return; }
+    const c = cur();
+    $('rcD').innerHTML = `<b>${esc(c.app.biz)}</b> is rejected and goes back to ${esc(c.app.actor)} to update and resubmit. This cannot be undone — a resubmission opens a new case.`;
+    C.openModal('rejectConfirm', $('rjSubmit'));
+  });
+  $('rcGo').addEventListener('click', () => {
+    const c = cur(), reason = $('rjReason').value.trim();
+    const items = [...$('rjItems').querySelectorAll('.pick.on')].map(r => { const x = rjItems[Number(r.dataset.i)]; return { type: x.type, name: x.name, reason: r.querySelector('.why input').value.trim() }; });
+    C.closeModal('rejectConfirm'); C.closeDrawer('rejectDrawer');
+    if (c && C.reject(c.app, reason, items)) location.href = 'cases.html?msg=' + encodeURIComponent(`${c.app.biz} was rejected and returned to ${c.app.actor}.`);
+  });
+
+
+  render();
+</script>
+</body>
+</html>
