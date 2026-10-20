@@ -401,3 +401,13 @@ td.cell-end, th.cell-end { text-align: end; }
 .ev-pager b { font-weight: 500; color: #171C26; }
 
 [tabindex="-1"]:focus { box-shadow: none; outline: none; }
+
+/* Services & pricing: one row per rate that differs from published pricing */
+.pr-line { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; padding: 12px 0; border-top: 1px solid var(--border-subtle); font-size: 14px; align-items: start; }
+.pr-what b { font-weight: 600; }
+.pr-note { font-size: 13px; margin-top: 4px; color: var(--cadet-base); }
+.pr-nums { display: flex; flex-direction: column; gap: 2px; }
+.pr-nums b { font-family: 'Outfit', sans-serif; font-weight: 700; }
+.pr-diff { font-size: 12px; font-weight: 600; color: var(--destructive); }
+.pr-dec { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+@media (max-width: 767px) { .pr-line { grid-template-columns: 1fr; gap: 8px; } }

@@ -213,26 +213,46 @@
     return `<h2 class="sec-title">Documents</h2><p class="sec-sub">${docs.length} document${docs.length === 1 ? '' : 's'} uploaded by ${esc(c.app.actor)} with the application.</p>
       <div style="display:flex;flex-direction:column;gap:12px">${docs.map(d => rrow(c, C.docKey(d), d.name, filesOf(d).join(', '), 'doc', `<button class="btn btn-outline btn-sm" type="button" data-view-doc="${esc(d.name)}">${C.icon('doc', 'hi-sm')}View</button><button class="btn btn-ghost btn-sm" type="button" data-download="${esc(d.name)}">${C.icon('download', 'hi-sm')}Download</button>`)).join('')}</div>`;
   }
+  /* Services & pricing: what Sales is asking Kashier to switch on and charge. Each service shows its bank and settlement
+     type, then every rate that differs from published pricing: requested against standard, how far below it is, the
+     justification Sales gave, and who approved it. Anything not listed is at published pricing. */
+  const fmtRate = (pct, fee) => [pct != null ? esc(pct) + '%' : '', fee != null ? esc(fee) + ' EGP' : ''].filter(Boolean).join(' + ') || '\u2014';
+  const below = (req, std, unit) => { if (req == null || std == null) return ''; const d = Math.round((Number(req) - Number(std)) * 100) / 100; return d === 0 ? '' : (d < 0 ? '\u2212' : '+') + Math.abs(d) + unit; };
   function panelPricing(c) {
     const app = c.app, configs = app.summary.serviceConfigs || [], decisions = K.decisionsFor(app.id), cards = [];
+    const lineCount = app.requests.length, decided = app.requests.filter(r => decisions[r.id]);
     configs.forEach(sc => (sc.configs || [{ bank: '', module: '' }]).forEach(cfg => {
       if (sc.service === 'Transfers') {
         const t = app.transfers || { fees: {} };
         const fees = [['wallet', 'Wallet'], ['bank', 'Bank'], ['card', 'Card']].map(([k, l]) => { const f = (t.fees || {})[k] || {};
-          return `<div class="cfg-rate"><span>${l}</span><span class="pct">${esc(f.percentage || '—')}% + ${esc(f.flat || '—')}</span><span></span></div>`; }).join('');
+          return `<div class="pr-line"><div class="pr-what"><b>${l} transfer fee</b></div><div class="pr-nums"><b>${esc(f.percentage || '\u2014')}% + ${esc(f.flat || '\u2014')}</b></div></div>`; }).join('');
         cards.push(`<div class="cfg-card"><div class="cfg-head">Transfers</div><div class="cfg-rows">${kv('Financial institution', cfg.bank)}${kv('Version', cfg.module)}</div><div class="cfg-rates">${fees}</div></div>`);
         return;
       }
       const lines = app.requests.filter(r => r.service === sc.service && (r.bank || '') === (cfg.bank || ''));
-      const rates = lines.map(l => { const d = decisions[l.id];
-        const chip = d ? `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span>` : `<span class="chip warning">With ${esc(K.TIER_OWNER[l.tier])}</span>`;
-        const fee = l.requestedFee != null ? ` + ${esc(l.requestedFee)} EGP` : '', stdFee = l.standardFee != null ? ` + ${esc(l.standardFee)} EGP` : '';
-        return `<div class="cfg-rate"><span>${esc(l.rate)}${l.note ? `<span class="std" style="font-style:italic;white-space:normal">Sales note: “${esc(l.note)}”</span>` : ''}</span><span><span class="pct">${esc(l.requested)}%${fee}</span><span class="std">standard ${esc(l.standard)}%${stdFee}</span></span><span>${chip}${d ? `<span class="std" style="white-space:normal">${esc(d.by)}${d.reason ? ' — ' + esc(d.reason) : ''}</span>` : ''}</span></div>`; }).join('');
+      const rates = lines.map(l => {
+        const d = decisions[l.id], dr = below(l.requested, l.standard, '%'), df = below(l.requestedFee, l.standardFee, ' EGP');
+        const chip = d ? `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span>` : `<span class="chip warning">Waiting for ${esc(K.TIER_OWNER[l.tier])}</span>`;
+        return `<div class="pr-line">
+          <div class="pr-what"><b>${esc(l.rate)}</b>
+            <div class="pr-note">${l.note ? `<span class="muted">Sales\u2019 justification:</span> \u201c${esc(l.note)}\u201d` : '<span class="muted">No justification was given.</span>'}</div></div>
+          <div class="pr-nums"><div><span class="muted">Requested</span> <b>${fmtRate(l.requested, l.requestedFee)}</b></div>
+            <div><span class="muted">Published</span> ${fmtRate(l.standard, l.standardFee)}</div>
+            ${dr || df ? `<div class="pr-diff">${[dr, df].filter(Boolean).join(' \u00b7 ')} against published</div>` : ''}</div>
+          <div class="pr-dec">${chip}<span class="muted" style="font-size:12px">${d ? esc(d.by) + (d.roleLabel ? ' \u00b7 ' + esc(d.roleLabel) : '') : 'Needs ' + esc(K.TIER_LABEL[l.tier])}</span>${d && d.reason ? `<span style="font-size:12px;color:var(--cadet-base)">\u201c${esc(d.reason)}\u201d</span>` : ''}</div></div>`;
+      }).join('');
       cards.push(`<div class="cfg-card"><div class="cfg-head">${esc(sc.service)}</div>
-        <div class="cfg-rows">${kv('Settlement type', cfg.module)}${kv('Financial institution', cfg.bank || 'Not required')}</div>
-        ${rates ? `<div class="cfg-rates">${rates}</div>` : ''}<div class="cfg-foot">${rates ? 'All other rates at standard pricing.' : 'All rates at standard pricing.'}</div></div>`);
+        <div class="cfg-rows">${kv('Financial institution', cfg.bank || 'Not required')}${kv('Settlement type', cfg.module)}</div>
+        ${rates ? `<div class="cfg-rates">${rates}</div>` : ''}<div class="cfg-foot">${rates ? 'Every other rate on this service is at published pricing.' : 'Every rate on this service is at published pricing \u2014 nothing needed approval.'}</div></div>`);
     }));
-    return `<h2 class="sec-title">Services &amp; pricing</h2><p class="sec-sub">Every requested rate, with the note Sales left and the rate-approval decision it came through with.</p>
+    const summary = `${configs.length} service${configs.length === 1 ? '' : 's'} \u00b7 ${lineCount ? lineCount + ' rate' + (lineCount === 1 ? '' : 's') + ' below published pricing, ' + decided.length + ' approved' : 'all rates at published pricing'}`;
+    return `<h2 class="sec-title">Services &amp; pricing</h2>
+      <div class="alert info"><svg class="hi-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+        <div class="at"><b>What you are confirming \u2014 ${esc(summary)}</b>
+          <ul style="margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:2px">
+            <li>The services and banks fit the merchant\u2019s business (${esc(c.industry)}).</li>
+            <li>Each settlement type and financial institution is correct for the service.</li>
+            <li>Every rate below published pricing is justified and was approved by the right level.</li></ul></div></div>
       ${cards.length ? `<div style="display:flex;flex-direction:column;gap:12px">${cards.join('')}</div>` : `<div class="empty"><div class="t">No services were submitted</div></div>`}
       ${reviewBar(c, 'pricing', 'Services & pricing')}`;
   }
