@@ -83,7 +83,7 @@
     <div class="dr-foot"><button class="btn btn-outline" type="button" data-close-doc>Close</button><button class="btn btn-primary" type="button" id="dvDownload">Download all</button></div>
   </aside>
 
-  <aside class="drawer" id="logsDrawer" role="dialog" aria-modal="true" aria-labelledby="lgTitle" tabindex="-1">
+  <aside class="drawer sm" id="logsDrawer" role="dialog" aria-modal="true" aria-labelledby="lgTitle" tabindex="-1">
     <div class="handle"></div>
     <div class="dr-head"><div><h2 id="lgTitle" data-focus tabindex="-1">Activity Log</h2><p id="lgDesc"></p></div>
       <button class="icon-btn" type="button" aria-label="Close" data-close-logs id="lgClose"></button></div>
@@ -224,13 +224,7 @@
     (s.serviceConfigs || []).forEach(sc => { cfgs[sc.service] = sc; });
     const chosen = s.services || [], lineCount = app.requests.length, decided = app.requests.filter(r => decisions[r.id]).length;
     const val = (v, unit) => `<span class="val-box">${v == null || v === '' ? '\u2014' : esc(v)}<i>${unit}</i></span>`;
-    const approvalOf = line => {
-      if (!line) return '<span class="muted">No approval needed</span>';
-      const d = decisions[line.id];
-      if (!d) return `<span class="chip warning">Pending</span><div class="rp-by">With the ${esc(K.TIER_OWNER[line.tier])}</div>`;
-      return `<span class="chip ${d.decision === 'approved' ? 'positive' : 'negative'}">${d.decision === 'approved' ? 'Approved' : 'Rejected'}</span><div class="rp-by">${esc(d.by)}</div>${d.reason ? `<div class="rp-why">${esc(d.reason)}</div>` : ''}`;
-    };
-    const head = ['Service', 'Model', 'Rate type', 'Fees (%)', 'Flat fees', 'Financial institution', 'Rate approval'];
+    const head = ['Service', 'Model', 'Rate type', 'Fees (%)', 'Flat fees', 'Financial institution'];
     let rows = '';
     C.CATALOG.forEach(tier => {
       const services = tier.services.filter(sv => chosen.indexOf(sv) !== -1);
@@ -254,8 +248,7 @@
               <td>${esc(t.label)}${line ? `<div class="rate-just"><div class="rate-just-pub">Published ${esc(pub)}</div><div class="rate-just-note${line.note ? '' : ' empty'}">${line.note ? esc(line.note) : 'No justification recorded'}</div></div>` : ''}</td>
               <td>${val(line ? line.requested : t.standard, '%')}</td>
               <td>${val(line ? line.requestedFee : t.fixedFee, esc(t.feeCurrency || 'EGP'))}</td>
-              ${i === 0 ? `<td rowspan="${tiers.length}" class="cell-top">${esc(cfg.bank || 'Not required')}</td>` : ''}
-              <td class="cell-approval">${approvalOf(line)}</td></tr>`;
+              ${i === 0 ? `<td rowspan="${tiers.length}" class="cell-top">${esc(cfg.bank || 'Not required')}</td>` : ''}</tr>`;
           });
         });
       });

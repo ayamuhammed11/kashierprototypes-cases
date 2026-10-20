@@ -440,3 +440,7 @@ td.cell-end, th.cell-end { text-align: end; }
 .rate-just-note.empty { color: var(--cadet-06); font-style: italic; }
 .rp-by { font-size: 12px; color: var(--cadet-05); margin-top: 3px; }
 .rp-why { font-size: 12px; color: var(--cadet-base); margin-top: 3px; white-space: normal; }
+
+/* Logs drawer: the guide's small size (400px), and a shorter sheet on phones so the page stays visible behind it */
+@media (min-width: 768px) { .drawer.sm { max-width: 400px; } }
+@media (max-width: 767px) { .drawer.sm { max-height: 70vh; } }
