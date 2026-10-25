@@ -180,7 +180,7 @@ window.Cases = (function () {
 
   /* ── Underwriting decisions (the Merchant module's own functions) ── */
   const approve = app => K.approveAccount({ app: app, role: 'onboarding' });
-  const reject = (app, reason, items) => K.rejectAccount({ app: app, role: 'onboarding', reason: reason, items: items });
+  const reject = (app, reason, items, fromBank) => K.rejectAccount({ app: app, role: 'onboarding', reason: reason, items: items, fromBank: !!fromBank });
   const goLive = app => K.goLiveAccount({ app: app, role: 'onboarding' });
   function addNote(app, text) {
     const l = local(app.id);

@@ -1897,20 +1897,23 @@ window.KashierRates = (function () {
   /* Stage 1 ✗ — the application goes back to the salesperson with the reason. */
   function rejectAccount(opts) {
     const app = opts.app, prev = accountRecord(app);
-    if (opts.role !== 'onboarding' || prev.status !== 'submitted' || !String(opts.reason || '').trim()) return null;
+    // The bank does not use the application, so Underwriting relays its answer: a rejection by the bank comes in as opts.fromBank
+    // while the application sits at the bank, and goes back to the salesperson exactly like an Underwriting rejection.
+    const fromBank = !!opts.fromBank;
+    if (opts.role !== 'onboarding' || prev.status !== (fromBank ? 'pending-configurations' : 'submitted') || !String(opts.reason || '').trim()) return null;
     const ts = new Date().toISOString();
     const items = (opts.items || []).filter(i => i && i.name && String(i.reason || '').trim()).map(i => ({ type: i.type, name: i.name, reason: String(i.reason).trim() }));
-    setAccount(app, { status: 'rejected', by: ROLES.onboarding.name, ts: ts, reason: opts.reason.trim(), items: items },
+    setAccount(app, { status: 'rejected', by: ROLES.onboarding.name, ts: ts, reason: opts.reason.trim(), items: items, fromBank: fromBank },
       'rejected-by-onboarding', 'application');
     if (app.leadId) {
       const notes = readStore('kashierLeadReturnNote');
       notes[app.leadId] = { ts: ts, kind: 'onboarding',
-        text: 'Application rejected by the Onboarding team (' + ROLES.onboarding.name + '): ' + opts.reason.trim() };
+        text: (fromBank ? 'Application rejected by the bank, returned by the Onboarding team (' : 'Application rejected by the Onboarding team (') + ROLES.onboarding.name + '): ' + opts.reason.trim() };
       writeStore('kashierLeadReturnNote', notes);
     }
     sendMail({ to: audience(app.leadId, chainFor(roleOfName(app.actor) || 'sales').concat(readStore('kashierContributors')[app.leadId] || [])), kind: 'update', leadId: app.leadId, biz: app.biz, by: ROLES.onboarding.name,
-      subject: app.biz + ' was rejected by Underwriting',
-      lines: [ROLES.onboarding.name + ' rejected the application.', 'Reason: ' + opts.reason.trim()].concat((items || []).map(i => i.type + ' \u2014 ' + i.name + ': ' + i.reason)).concat(['It is back with ' + app.actor + ' to update and resubmit.']) });
+      subject: app.biz + (fromBank ? ' was rejected by the bank' : ' was rejected by Underwriting'),
+      lines: [ROLES.onboarding.name + (fromBank ? ' returned the application: the bank rejected it.' : ' rejected the application.'), (fromBank ? 'Bank feedback: ' : 'Reason: ') + opts.reason.trim()].concat((items || []).map(i => i.type + ' \u2014 ' + i.name + ': ' + i.reason)).concat(['It is back with ' + app.actor + ' to update and resubmit.']) });
     return 'rejected';
   }
   /* Stage 2 — bank/vendor approval and credentials are in; the account goes live. */
@@ -2273,9 +2276,9 @@ window.KashierRates = (function () {
       if (rec.approvedTs) events.push({ ts: rec.approvedTs, who: rec.by, role: 'Onboarding Team', action: 'Approved', category: 'Underwriting',
         text: 'Approved internally and sent to the bank', details: [{ label: 'Application', value: app.id }],
         status: { from: 'Underwriting Review', to: 'Bank Submission' } });
-      if (rec.status === 'rejected') events.push({ ts: rec.ts, who: rec.by, role: 'Onboarding Team', action: 'Rejected', category: 'Underwriting',
-        text: 'Application rejected by the Onboarding team', details: [{ label: 'Application', value: app.id }, { label: 'Reason', value: rec.reason || '\u2014' }].concat((rec.items || []).map(i => ({ label: i.name, value: i.reason, item: i.type }))),
-        status: { from: 'Underwriting Review', to: 'Rejected' } });
+      if (rec.status === 'rejected') events.push({ ts: rec.ts, who: rec.by, role: 'Onboarding Team', action: rec.fromBank ? 'Returned' : 'Rejected', category: 'Underwriting',
+        text: rec.fromBank ? 'Returned to the salesperson \u2014 rejected by the bank' : 'Application rejected by the Onboarding team', details: [{ label: 'Application', value: app.id }, { label: rec.fromBank ? 'Bank feedback' : 'Reason', value: rec.reason || '\u2014' }].concat((rec.items || []).map(i => ({ label: i.name, value: i.reason, item: i.type }))),
+        status: { from: rec.fromBank ? 'Bank Submission' : 'Underwriting Review', to: 'Rejected' } });
       if (rec.status === 'live') events.push({ ts: rec.ts, who: rec.by, role: 'Onboarding Team', action: 'Live', category: 'Underwriting',
         text: 'Bank/vendor approval received \u2014 account is live', details: [{ label: 'Application', value: app.id }],
         status: { from: 'Bank Submission', to: 'Live' } });
@@ -2297,7 +2300,7 @@ window.KashierRates = (function () {
     if (!app) return null;
     const rec = accountRecord(app);
     if (rec.status === 'rejected') {
-      return { kind: 'underwriting', title: 'Rejected by Underwriting', by: rec.by, role: 'Onboarding Team', ts: rec.ts, reason: rec.reason || '', items: [], flagged: rec.items || [] };
+      return { kind: 'underwriting', title: rec.fromBank ? 'Rejected by the bank' : 'Rejected by Underwriting', fromBank: !!rec.fromBank, by: rec.by, role: 'Onboarding Team', ts: rec.ts, reason: rec.reason || '', items: [], flagged: rec.items || [] };
     }
     const d = decisionsFor(app.id);
     const items = app.requests.filter(r => d[r.id] && d[r.id].decision === 'rejected').map(r => ({

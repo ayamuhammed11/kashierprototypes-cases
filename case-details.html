@@ -133,6 +133,7 @@
       h += `<button class="btn btn-destructive-outline" type="button" id="rejectBtn">${C.icon('x', 'hi-18', 2)}Reject</button>`;
       h += `<button class="btn btn-primary" type="button" id="approveBtn"${p.ready ? '' : ' disabled'} title="${p.ready ? '' : 'Review every item first — ' + (p.total - p.done) + ' left'}">${C.icon('check', 'hi-18', 2)}Approve</button>`;
     }
+    if (c.status === 'pending-configurations') h += `<button class="btn btn-destructive-outline" type="button" id="bankRejectBtn">${C.icon('undo')}Rejected by the bank</button>`;
     h += `<button class="btn btn-outline" type="button" id="logsBtn">${C.icon('doc')}View logs</button>`;
     $('actions').innerHTML = h;
 
@@ -141,7 +142,7 @@
       submitted: p2.flagged.length
         ? ['warning', 'exclCircle', `${p2.flagged.length} item${p2.flagged.length === 1 ? '' : 's'} flagged`, 'Approval stays blocked while anything is flagged. Clear a flag once it is resolved, or reject the case and return it to Sales.']
         : ['info', 'info', 'Underwriting review', `Review the business details, every document, the pricing, the payout methods${(c.app.contracts || []).length ? ' and the contracts' : ''}. Approve once all ${p2.total} items are verified — or reject the case with a reason.`],
-      'pending-configurations': ['warning', 'clock', 'Submitted to the bank', `Approved by ${rec.by || C.ME.name}${rec.approvedTs ? ' on ' + C.fmtDate(rec.approvedTs) : ''}. It is already submitted and is waiting for the bank or vendor approval and credentials. The case leaves this list once the account is live.`],
+      'pending-configurations': ['warning', 'clock', 'Submitted to the bank', `Approved by ${rec.by || C.ME.name}${rec.approvedTs ? ' on ' + C.fmtDate(rec.approvedTs) : ''}. It is already submitted and is waiting for the bank or vendor approval and credentials. If the bank rejects it, use <b>Rejected by the bank</b> to return it to the salesperson with the bank\u2019s feedback. The case leaves this list once the account is live or returned.`],
       rejected: ['error', 'exclCircle', 'Rejected — back with ' + c.app.actor, `${esc(rec.by)} rejected this case on ${C.fmtDate(rec.ts)}: ${esc(rec.reason)}. A resubmission opens a new case.`],
       live: ['success', 'checkCircle', 'Live', `Live since ${C.fmtDate(rec.ts)}. This account is now worked from the Merchant module.`],
     }[c.status];
@@ -384,6 +385,7 @@
     if (g('#noteAdd')) { const t = $('noteText').value.trim(); if (!t) { $('noteText').classList.add('invalid'); $('noteText').focus(); return; } C.addNote(c.app, t); render(); return; }
     if (g('#approveBtn')) { openApprove(c, g('#approveBtn')); return; }
     if (g('#rejectBtn')) { openReject(c, g('#rejectBtn')); return; }
+    if (g('#bankRejectBtn')) { openReject(c, g('#bankRejectBtn'), true); return; }
     if (g('[data-close-drawer]') || g('#scrim')) { C.closeDrawer('rejectDrawer'); C.closeDrawer('docDrawer'); C.closeDrawer('logsDrawer'); return; }
     if (g('[data-close-modal]')) { C.closeModal(g('.modal-wrap').id); return; }
     if (e.target.classList && e.target.classList.contains('modal-wrap')) C.closeModal(e.target.id);
@@ -475,7 +477,13 @@
 
   /* Reject: drawer (flagged items prefilled), then a blocking confirm */
   let rjItems = [];
-  function openReject(c, trigger) {
+  let rjBank = false;
+  function openReject(c, trigger, fromBank) {
+    rjBank = !!fromBank;
+    $('rjTitle').textContent = rjBank ? 'Rejected by the bank' : 'Reject case';
+    document.querySelector('label[for="rjReason"]').textContent = rjBank ? 'Comment from the bank\'s feedback' : 'Reason for rejecting';
+    $('rjReason').placeholder = rjBank ? 'What did the bank say? The salesperson sees this and can edit the application and resubmit it.' : 'What needs fixing? The salesperson sees this on the application.';
+    $('rjSubmit').textContent = rjBank ? 'Return to Sales' : 'Reject & return to Sales';
     const p = C.progress(c);
     const sectionName = { business: 'Business details', pricing: 'Services & pricing', payout: 'Payout methods' };
     rjItems = p.list.map(i => {
@@ -484,7 +492,7 @@
     });
     // Contracts are one section however many were uploaded.
     rjItems = rjItems.filter((x, i) => !(x.name === 'Contracts' && rjItems.findIndex(y => y.name === 'Contracts') !== i));
-    $('rjDesc').textContent = `${c.app.biz} goes back to ${c.app.actor} with your reason.`;
+    $('rjDesc').textContent = rjBank ? `${c.app.biz} goes back to ${c.app.actor} with the bank\u2019s feedback, to edit and resubmit.` : `${c.app.biz} goes back to ${c.app.actor} with your reason.`;
     $('rjReason').value = ''; $('rjReasonErr').hidden = true; $('rjItemsErr').hidden = true;
     $('rjItems').innerHTML = rjItems.map((x, i) => `<div class="pick ${x.on ? 'on' : ''}" data-i="${i}"><label><input type="checkbox" ${x.on ? 'checked' : ''}> ${esc(x.label)}<small>${x.type}</small></label>
       <div class="why" ${x.on ? '' : 'hidden'}><input class="input sm" placeholder="Why was this rejected?" value="${esc(x.reason)}" aria-label="Reason for ${esc(x.label)}"></div></div>`).join('');
@@ -502,14 +510,16 @@
     const missing = rows.filter(r => !r.querySelector('.why input').value.trim());
     if (missing.length) { missing.forEach(r => r.querySelector('.why input').classList.add('invalid')); $('rjItemsErr').hidden = false; missing[0].querySelector('.why input').focus(); return; }
     const c = cur();
-    $('rcD').innerHTML = `<b>${esc(c.app.biz)}</b> is rejected and goes back to ${esc(c.app.actor)} to update and resubmit. This cannot be undone — a resubmission opens a new case.`;
+    $('rcT').textContent = rjBank ? 'Return this application to Sales?' : 'Return this application to Sales?';
+    $('rcD').innerHTML = rjBank ? `<b>${esc(c.app.biz)}</b> was rejected by the bank. It goes back to ${esc(c.app.actor)} with your comment to edit and resubmit; once resubmitted it reaches Underwriting again as a new case. This cannot be undone.`
+      : `<b>${esc(c.app.biz)}</b> is rejected and goes back to ${esc(c.app.actor)} to update and resubmit. This cannot be undone — a resubmission opens a new case.`;
     C.openModal('rejectConfirm', $('rjSubmit'));
   });
   $('rcGo').addEventListener('click', () => {
     const c = cur(), reason = $('rjReason').value.trim();
     const items = [...$('rjItems').querySelectorAll('.pick.on')].map(r => { const x = rjItems[Number(r.dataset.i)]; return { type: x.type, name: x.name, reason: r.querySelector('.why input').value.trim() }; });
     C.closeModal('rejectConfirm'); C.closeDrawer('rejectDrawer');
-    if (c && C.reject(c.app, reason, items)) location.href = 'cases.html?msg=' + encodeURIComponent(`${c.app.biz} was rejected and returned to ${c.app.actor}.`);
+    if (c && C.reject(c.app, reason, items, rjBank)) location.href = 'cases.html?msg=' + encodeURIComponent(rjBank ? `${c.app.biz} was returned to ${c.app.actor} with the bank\u2019s feedback.` : `${c.app.biz} was rejected and returned to ${c.app.actor}.`);
   });
 
 
