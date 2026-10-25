@@ -157,6 +157,8 @@ window.Cases = (function () {
     manual('business', 'Business details', 'business');
     manual('pricing', 'Services & pricing', 'pricing');
     (app.documents || []).forEach(d => manual(docKey(d), d.name, 'documents'));
+    // A required document that was not uploaded blocks approval until the case is rejected back to Sales.
+    K.missingDocuments(app).forEach(d => out.push({ key: 'doc:' + d.name, label: d.name, tab: 'documents', state: 'flag', missing: true, why: d.why, reason: 'Required document was not uploaded' }));
     const po = payoutState(app);
     out.push({ key: 'payout', label: 'Payout method', tab: 'payout', optional: true, state: po.n ? po.state : 'na', reason: po.rejected.map(x => x.account + ': ' + (x.verification.reason || '')).join(' | '), auto: true });
     (app.contracts || []).forEach((k, i) => manual(conKey(k, i), conName(k, i), 'contracts'));

@@ -210,9 +210,15 @@
   }
   function panelDocuments(c) {
     const docs = c.app.documents || [];
-    if (!docs.length) return `<h2 class="sec-title">Documents</h2><div class="empty">${''}<div class="t">No documents were uploaded</div><div class="d">${esc(c.app.summary.docsDone)} of ${esc(c.app.summary.docsTotal)} documents came with this application.</div></div>`;
-    return `<h2 class="sec-title">Documents</h2><p class="sec-sub">${docs.length} document${docs.length === 1 ? '' : 's'} uploaded by ${esc(c.app.actor)} with the application.</p>
-      <div style="display:flex;flex-direction:column;gap:12px">${docs.map(d => rrow(c, C.docKey(d), d.name, filesOf(d).join(', '), 'doc', `<button class="btn btn-outline btn-sm" type="button" data-view-doc="${esc(d.name)}">${C.icon('doc', 'hi-sm')}View</button><button class="btn btn-ghost btn-sm" type="button" data-download="${esc(d.name)}">${C.icon('download', 'hi-sm')}Download</button>`)).join('')}</div>`;
+    const missing = K.missingDocuments(c.app), required = K.requiredDocuments(c.app);
+    const alertBox = missing.length
+      ? `<div class="alert error" role="alert">${C.icon('exclCircle', 'hi-lg')}<div class="at"><b>${missing.length} required document${missing.length === 1 ? ' is' : 's are'} missing</b><span>${required.length - missing.length} of ${required.length} required documents were uploaded. Approval stays blocked until ${missing.length === 1 ? 'it is' : 'they are'} provided, so reject the case to send it back to ${esc(c.app.actor)}.</span></div></div>`
+      : `<div class="alert success">${C.icon('checkCircle', 'hi-lg')}<div class="at"><b>All ${required.length} required documents were uploaded</b></div></div>`;
+    const missingRows = missing.map(d => `<div class="rrow flag"><div class="rrow-main"><div class="rrow-ic">${C.icon('doc')}</div><div class="rrow-info"><div class="n">${esc(d.name)}</div><div class="f">Required for: ${esc(d.why.join(', '))}</div></div>
+      <div class="rrow-act"><span class="chip negative">Missing</span></div></div></div>`).join('');
+    if (!docs.length && !missing.length) return `<h2 class="sec-title">Documents</h2><div class="empty"><div class="t">No documents were uploaded</div></div>`;
+    return `<h2 class="sec-title">Documents</h2>${alertBox}<p class="sec-sub">${docs.length} document${docs.length === 1 ? '' : 's'} uploaded by ${esc(c.app.actor)} with the application.</p>
+      <div style="display:flex;flex-direction:column;gap:12px">${missingRows}${docs.map(d => rrow(c, C.docKey(d), d.name, filesOf(d).join(', '), 'doc', `<button class="btn btn-outline btn-sm" type="button" data-view-doc="${esc(d.name)}">${C.icon('doc', 'hi-sm')}View</button><button class="btn btn-ghost btn-sm" type="button" data-download="${esc(d.name)}">${C.icon('download', 'hi-sm')}Download</button>`)).join('')}</div>`;
   }
   /* Services & pricing: what Sales is asking Kashier to switch on and charge. Each service shows its bank and settlement
      type, then every rate that differs from published pricing: requested against standard, how far below it is, the

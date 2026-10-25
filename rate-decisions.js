@@ -1468,6 +1468,56 @@ window.KashierRates = (function () {
   }
 ]);
 
+  /* The same document goes by a slightly different name on the seeded records and on the application form. */
+  const DOC_ALIASES = { 'tax card': 'tax', 'tax identification card': 'tax', 'tax id': 'tax', 'commercial register': 'cr', 'commercial registration (cr)': 'cr',
+    'owner national id': 'id', 'national id': 'id', 'bank account letter': 'bank', 'bank account letter / iban proof': 'bank' };
+
+  /* ── Required documents ─────────────────────────────────────────────────────────────
+     The same Document Rules the application form applies: a rule asks for its documents when the merchant type, bank, model
+     and service all match. A document needed by several services is listed once, with every reason. The application does not
+     record the owner's nationality, so the foreign-owner rule is not applied here. */
+  const DOC_RULES = [
+    { name: 'Identity (universal)',    docs: ['National ID'] },
+    { name: 'Bank proof (universal)',  docs: ['Bank Account Letter / IBAN proof'] },
+    { name: 'Tax registration',        docs: ['Tax Identification Card'],  entities: ['Registered Business', 'Professional Business'] },
+    { name: 'Commercial Registration', docs: ['Commercial Registration (CR)'], entities: ['Registered Business'] },
+    { name: 'Bank Misr PSP annex',     docs: ['BM PSP Agreement Annex'],   banks: ['Bank Misr'], modules: ['PSP'] },
+    { name: 'Online services',         docs: ['Brand Authorization Letter'], online: true },
+    { name: 'POS services',            docs: ['Store Lease / Location Proof'], pos: true },
+  ];
+  const DOC_FILE = { 'National ID': 'national-id.pdf', 'Bank Account Letter / IBAN proof': 'bank-letter.pdf', 'Tax Identification Card': 'tax-card.pdf', 'Commercial Registration (CR)': 'commercial-register.pdf',
+    'BM PSP Agreement Annex': 'bm-psp-annex.pdf', 'Brand Authorization Letter': 'brand-authorization.pdf', 'Store Lease / Location Proof': 'store-lease.pdf', 'Store Image': 'storefront.jpg' };
+  /* Every document the application requires: [{ name, why: [reasons] }], in the order the rules list them. */
+  function requiredDocuments(app) {
+    const s = app.summary || {}, out = new Map(), add = (name, why) => { if (!out.has(name)) out.set(name, []); if (out.get(name).indexOf(why) === -1) out.get(name).push(why); };
+    (s.serviceConfigs || []).forEach(sc => (sc.configs && sc.configs.length ? sc.configs : [{}]).forEach(cfg => DOC_RULES.forEach(r => {
+      if (r.entities && r.entities.indexOf(s.entity) === -1) return;
+      if (r.banks && r.banks.indexOf(cfg.bank) === -1) return;
+      if (r.modules && r.modules.indexOf(cfg.module) === -1) return;
+      if (r.online && !sc.service.startsWith('Online ')) return;
+      if (r.pos && !sc.service.startsWith('POS ')) return;
+      r.docs.forEach(d => add(d, r.name));
+    })));
+    if (s.posTerminals) add('Store Image', 'POS terminals requested');
+    if (app.taxInvoice) add('Tax Identification Card', 'Tax invoice');
+    return [...out.entries()].map(([name, why]) => ({ name: name, why: why }));
+  }
+  /* Required documents that were not uploaded. */
+  function missingDocuments(app) {
+    const have = {};
+    (app.documents || []).forEach(d => { if (String(d.file || '').trim()) have[docKey(d.name)] = true; });
+    return requiredDocuments(app).filter(d => !have[docKey(d.name)]);
+  }
+  // Sample applications arrive complete, except three left short on purpose so the missing-documents check has something to show.
+  (function completeSeededDocuments() {
+    const SHORT = ['APP-00000006', 'APP-00000041', 'APP-00000047'];
+    SEEDED.forEach(app => {
+      if (SHORT.indexOf(app.id) === -1) missingDocuments(app).forEach(d => app.documents.push({ name: d.name, file: DOC_FILE[d.name] || 'document.pdf' }));
+      app.summary.docsTotal = String(requiredDocuments(app).length);
+      app.summary.docsDone = String(requiredDocuments(app).length - missingDocuments(app).length);
+    });
+  })();
+
 
   /* A seeded application that arrives already reviewed writes its decisions once, the same
      way a real decision would, so the lead shows up as returned. Nothing is written again
@@ -2288,10 +2338,7 @@ window.KashierRates = (function () {
     return events.sort((x, y) => new Date(y.ts) - new Date(x.ts));
   }
 
-  /* The same document goes by a slightly different name on the seeded records and on the application form. */
-  const DOC_ALIASES = { 'tax card': 'tax', 'tax identification card': 'tax', 'tax id': 'tax', 'commercial register': 'cr', 'commercial registration (cr)': 'cr',
-    'owner national id': 'id', 'national id': 'id', 'bank account letter': 'bank', 'bank account letter / iban proof': 'bank' };
-  const docKey = n => { const k = String(n || '').trim().toLowerCase(); return DOC_ALIASES[k] || k; };
+  function docKey(n) { const k = String(n || '').trim().toLowerCase(); return DOC_ALIASES[k] || k; }
 
   /* Why an application is back with the salesperson. It is either rejected by the Onboarding team after
      underwriting review (one reason), or one or more of its rates were rejected by the approvers (a reason each). */
@@ -2432,7 +2479,7 @@ window.KashierRates = (function () {
     loadApplications: loadApplications,
     approvalRequests: approvalRequests, findApprovalRequest: findApprovalRequest, requestURL: requestURL,
     tierForPricing: tierForPricing, rejectedApplicationFor: rejectedApplicationFor,
-    revisionPlan: revisionPlan, resubmitApplication: resubmitApplication, applicationURL: applicationURL, logEvent: logEvent, applicationLog: applicationLog, rejectionInfo: rejectionInfo, docKey: docKey, notifySubmission: notifySubmission, sendMail: sendMail, isWatching: isWatching, watchChosen: watchChosen, setWatching: setWatching, mailbox: mailbox, emailOf: emailOf, payoutLabel: payoutLabel, payoutList: payoutList,
+    revisionPlan: revisionPlan, resubmitApplication: resubmitApplication, applicationURL: applicationURL, logEvent: logEvent, applicationLog: applicationLog, rejectionInfo: rejectionInfo, docKey: docKey, requiredDocuments: requiredDocuments, missingDocuments: missingDocuments, notifySubmission: notifySubmission, sendMail: sendMail, isWatching: isWatching, watchChosen: watchChosen, setWatching: setWatching, mailbox: mailbox, emailOf: emailOf, payoutLabel: payoutLabel, payoutList: payoutList,
     ACCOUNT_STATUS: ACCOUNT_STATUS, midFor: midFor, accountStatusFor: accountStatusFor,
     merchantAccounts: merchantAccounts, findAccount: findAccount, accountLog: accountLog, accountURL: accountURL,
     approveAccount: approveAccount, rejectAccount: rejectAccount, goLiveAccount: goLiveAccount,
