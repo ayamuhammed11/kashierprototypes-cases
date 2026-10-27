@@ -195,6 +195,9 @@ window.Cases = (function () {
     Object.keys(next).forEach(k => { const a = prev[k] == null ? '' : String(prev[k]), b = String(next[k] == null ? '' : next[k]).trim(); if (a !== b) changes.push({ label: labels[k] || k, from: a, to: b }); });
     if (!changes.length) return 0;
     save(app.id, { legal: Object.assign({}, prev, next) });
+    // The data on the NBE forms changed, so its approval no longer holds: it has to be approved again before exporting.
+    const l = local(app.id);
+    if (l.review.nbe && l.review.nbe.state === 'ok') { delete l.review.nbe; save(app.id, { review: l.review }); addEvent(app, 'Withdrew the approval of the data for the NBE forms \u2014 it changed', 'Changed'); }
     addEvent(app, 'Updated the underwriting legal data (' + changes.length + ' field' + (changes.length === 1 ? '' : 's') + ')', 'Changed', null, changes);
     return changes.length;
   }

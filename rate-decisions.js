@@ -1508,6 +1508,11 @@ window.KashierRates = (function () {
     (app.documents || []).forEach(d => { if (String(d.file || '').trim()) have[docKey(d.name)] = true; });
     return requiredDocuments(app).filter(d => !have[docKey(d.name)]);
   }
+  // Four of the sample applications settle their NBE Card services on PF, so the NBE sheets apply to them; the rest are on PSP and do not get them.
+  ['APP-00000039', 'APP-00000045', 'APP-00000047', 'APP-00000050'].forEach(id => {
+    const a = SEEDED.find(x => x.id === id);
+    if (a) a.summary.serviceConfigs.forEach(sc => sc.configs.forEach(cfg => { if (cfg.bank === 'National Bank of Egypt') cfg.module = 'PF'; }));
+  });
   // Sample applications arrive complete, except three left short on purpose so the missing-documents check has something to show.
   (function completeSeededDocuments() {
     const SHORT = ['APP-00000006', 'APP-00000041', 'APP-00000047'];

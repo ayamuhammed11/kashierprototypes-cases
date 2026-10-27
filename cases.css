@@ -450,3 +450,6 @@ td.cell-end, th.cell-end { text-align: end; }
 .lg-grid .field.wide { grid-column: 1 / -1; }
 .fhint { font-size: 12px; color: var(--cadet-05); line-height: 1.4; }
 @media (max-width: 640px) { .lg-grid { grid-template-columns: 1fr; } }
+
+/* A button that is not available yet stays visible but dimmed; clicking it explains what is missing */
+.btn.dimmed { opacity: .45; cursor: not-allowed; }

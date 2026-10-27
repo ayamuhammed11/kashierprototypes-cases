@@ -1,8 +1,8 @@
 /* NBE export — fills the bank's own forms from a case and downloads them.
 
-   Scenario 1: the case is sent to National Bank of Egypt.
-     Online (a service on NBE that is Online): the email body, the E-Commerce application form and the MATCH KYC sheet.
-     POS (a service on NBE that is POS): the POS application form and the POS KYC sheet.
+   Scenario 1: the case is sent to National Bank of Egypt, with at least one Card service on PF.
+     Online (an Online Card service on NBE, PF): the email body, the E-Commerce application form and the MATCH KYC sheet.
+     POS (a POS Card service on NBE, PF): the POS application form and the POS KYC sheet.
    The templates in templates/nbe/ are the bank's forms with placeholders ({{key}}) where the merchant's data goes. Each form is
    a zip: the placeholders are replaced in the document/sheet XML and the file is zipped again, so the bank's layout is untouched.
    Values come from the application, the Underwriting legal and bank data saved on the case, and Kashier's fixed values
@@ -23,10 +23,11 @@ window.NBEExport = (function () {
   const splitName = n => { const t = String(n || '').trim().split(/\s+/).filter(Boolean); return { first: t[0] || '', last: t.slice(1).join(' ') }; };
   const xmlEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 
-  /* Services of the case that go to NBE, by channel. */
+  /* The NBE sheets apply only to a Card service on NBE settled on PF; other NBE services, and Card on PSP, do not use them.
+     Returns those services of the case for one channel ('Online ' or 'POS '). */
   function nbeConfigs(app, prefix) {
     const out = [];
-    (app.summary.serviceConfigs || []).forEach(sc => { if (sc.service.startsWith(prefix)) (sc.configs || []).forEach(cfg => { if (cfg.bank === NBE) out.push({ service: sc.service, cfg: cfg }); }); });
+    (app.summary.serviceConfigs || []).forEach(sc => { if (sc.service.startsWith(prefix) && sc.service.endsWith('Card')) (sc.configs || []).forEach(cfg => { if (cfg.bank === NBE && cfg.module === 'PF') out.push({ service: sc.service, cfg: cfg }); }); });
     return out;
   }
   const hasNbe = app => nbeConfigs(app, 'Online ').length + nbeConfigs(app, 'POS ').length > 0;
