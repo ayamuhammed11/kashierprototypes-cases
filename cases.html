@@ -32,6 +32,7 @@
         <div class="filter-row" id="filterRow">
           <label class="fsearch"><svg class="hi-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg><input type="search" id="topSearch" placeholder="Search by business name, MID or email" aria-label="Search by business name, MID or email"></label>
           <div class="fchip-wrap" id="fAssignee"></div>
+          <div class="fchip-wrap" id="fBank"></div>
           <div class="fchip-wrap" id="fOwner"></div>
           <button class="text-btn filter-end" id="exportBtn" type="button"><svg class="hi-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg> Export</button>
         </div>
@@ -77,7 +78,7 @@
   showBm(); window.addEventListener('bm-ready', showBm);
 
   const TABS = [['all', 'All'], ['submitted', 'Underwriting Review'], ['pending-configurations', 'Bank Submission']];
-  const S = { tab: 'all', q: '', assignee: '', owner: '', page: 1, per: 10, sort: null, loading: true };
+  const S = { tab: 'all', q: '', assignee: '', bank: '', owner: '', page: 1, per: 10, sort: null, loading: true };
   let CASES = [];
 
   const COLS = [
@@ -85,6 +86,8 @@
   ];
   const sortVal = (c, k) => ({ no: c.no, biz: c.app.biz.toLowerCase(), owner: c.app.actor, assignee: c.assignee || '~', since: new Date(c.since).getTime() })[k];
 
+  /* The financial institutions a case's services go to. */
+  const banksOf = c => [...new Set([].concat.apply([], (c.app.summary.serviceConfigs || []).map(sc => (sc.configs || []).map(x => x.bank))).filter(Boolean))];
   function filtered(ignoreTab) {
     const q = S.q.trim().toLowerCase();
     return CASES.filter(c => {
@@ -92,6 +95,7 @@
       if (S.assignee === '__me' && c.assignee !== C.user().name) return false;
       if (S.assignee === '__none' && c.assignee) return false;
       if (S.assignee && !S.assignee.startsWith('__') && c.assignee !== S.assignee) return false;
+      if (S.bank && banksOf(c).indexOf(S.bank) === -1) return false;
       if (S.owner && c.app.actor !== S.owner) return false;
       if (q && ![c.app.biz, c.mid, c.app.summary.email].some(v => String(v || '').toLowerCase().includes(q))) return false;
       return true;
@@ -129,6 +133,7 @@
     const uniq = f => [...new Set(CASES.map(f))].filter(Boolean).sort();
     $('fAssignee').hidden = !C.user().canReassign;     // agents only ever see their own cases
     if (C.user().canReassign) chip($('fAssignee'), 'user', 'Assignee', (C.TEAM.indexOf(C.user().name) !== -1 ? [['__me', 'Me']] : []).concat(C.TEAM.filter(n => n !== C.user().name).map(n => [n, n])), 'assignee');
+    chip($('fBank'), 'cash', 'Financial institution', [...new Set([].concat.apply([], CASES.map(banksOf)))].sort().map(i => [i, i]), 'bank');
     chip($('fOwner'), 'users', 'Submitted by', uniq(c => c.app.actor).map(i => [i, i]), 'owner');
   }
 
@@ -181,7 +186,7 @@
     const start = (S.page - 1) * S.per, page = rows.slice(start, start + S.per);
     $('tbody').innerHTML = page.map(rowHTML).join('');
     $('cards').innerHTML = page.map(cardHTML).join('');
-    const none = rows.length === 0, anyFilter = S.q || S.assignee || S.owner;
+    const none = rows.length === 0, anyFilter = S.q || S.assignee || S.bank || S.owner;
     $('empty').hidden = !none;
     document.querySelector('.dt-wrap').style.display = none ? 'none' : '';
     $('cards').style.display = none ? 'none' : '';
@@ -208,7 +213,7 @@
   $('rpp').addEventListener('change', e => { S.per = Number(e.target.value); S.page = 1; render(); });
   $('pgPrev').addEventListener('click', () => { S.page--; render(); });
   $('pgNext').addEventListener('click', () => { S.page++; render(); });
-  $('clearBtn').addEventListener('click', () => { S.tab = 'all'; S.q = ''; S.assignee = S.owner = ''; $('topSearch').value = ''; S.page = 1; render(); });
+  $('clearBtn').addEventListener('click', () => { S.tab = 'all'; S.q = ''; S.assignee = S.bank = S.owner = ''; $('topSearch').value = ''; S.page = 1; render(); });
   $('exportBtn').addEventListener('click', () => {
     const rows = filtered(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const csv = [['Case ID', 'Merchant', 'MID', 'Status', 'Submitted by', 'Assignee', 'Submitted']].concat(rows.map(c =>
