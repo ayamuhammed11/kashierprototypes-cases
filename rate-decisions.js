@@ -656,7 +656,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -755,7 +755,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -917,7 +917,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -972,7 +972,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         },
@@ -981,7 +981,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -1137,7 +1137,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -1304,7 +1304,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }
@@ -1360,7 +1360,7 @@ window.KashierRates = (function () {
           "configs": [
             {
               "bank": "Bank Misr",
-              "module": "PSP"
+              "module": "PF"
             }
           ]
         }

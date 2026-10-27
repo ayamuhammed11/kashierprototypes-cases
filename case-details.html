@@ -122,6 +122,8 @@
 <script src="cases-core.js"></script>
 <script src="nbe-defaults.js" onerror="void 0"></script>
 <script src="nbe-export.js"></script>
+<script src="bm-defaults.js" onerror="void 0"></script>
+<script src="bm-export.js"></script>
 <script>
   const C = Cases, K = C.K, esc = C.esc, $ = id => document.getElementById(id);
   C.mountShell({ search: false });
@@ -152,6 +154,7 @@
     }
     if (c.status === 'pending-configurations') h += `<button class="btn btn-destructive-outline" type="button" id="bankRejectBtn">${C.icon('undo')}Rejected by the bank</button>`;
     if (nbeApplies(c)) { const gate = nbeGate(c); h += `<button class="btn btn-outline${gate.ok ? '' : ' dimmed'}" type="button" id="nbeBtn" aria-disabled="${!gate.ok}" title="${gate.ok ? '' : esc(gate.why)}">${C.icon('download')}Export for NBE</button>`; }
+    if (C.bmApplies(c)) { const gate = C.bmGate(c); h += `<button class="btn btn-outline${gate.ok ? '' : ' dimmed'}" type="button" id="bmBtn" aria-disabled="${!gate.ok}" title="${gate.ok ? '' : esc(gate.why)}">${C.icon('inbox')}Bank Misr batch</button>`; }
     h += `<button class="btn btn-outline" type="button" id="logsBtn">${C.icon('doc')}View logs</button>`;
     $('actions').innerHTML = h;
 
@@ -175,8 +178,9 @@
     const t = [['business', 'Business details', ''], ['pricing', 'Services & pricing', ''], ['documents', 'Documents', ''], ['payout', 'Payout method', 'Optional'], ['contracts', 'Contracts', req ? 'Required' : 'Optional']];
     t.push(['internal', 'Internal documents', 'Underwriting only']);
     if (nbeApplies(c)) t.push(['nbe', 'NBE forms', 'Export']);
-    const nbeDot = () => (c.local.review.nbe || {}).state === 'ok' ? 'ok' : '';
-    return t.map(([k, label, tag]) => [k, label, k === 'nbe' ? nbeDot() : st(k), tag]);
+    if (C.bmApplies(c)) t.push(['bm', 'Bank Misr batch', 'Batch']);
+    const dot = k => (c.local.review[k] || {}).state === 'ok' ? 'ok' : '';
+    return t.map(([k, label, tag]) => [k, label, k === 'nbe' || k === 'bm' ? dot(k) : st(k), tag]);
   }
   function renderTabs(c) {
     $('tabs').innerHTML = tabList(c).map(([k, label, st, tag]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" role="tab" aria-selected="${tab === k}" data-tab="${k}">${esc(label)}${tag ? `<span class="muted" style="font-size:12px;font-weight:400">${tag}</span>` : ''}${st ? `<span class="tab-dot ${st}" title="${st === 'ok' ? 'Verified' : 'Flagged'}"></span>` : ''}</button>`).join('');
@@ -388,11 +392,21 @@
           <button class="btn btn-success" type="button" id="nbeApprove"${missing ? ' disabled title="Fill in the required fields first"' : ''}>${C.icon('check', 'hi-18', 2)}Approve data</button></div>`;
     return `<h2 class="sec-title">NBE forms</h2>
       <div class="alert ${ok && gate.ok ? 'success' : 'info'}">${C.icon(ok && gate.ok ? 'checkCircle' : 'lock', 'hi-lg')}<div class="at"><b>${ok && gate.ok ? 'Ready to export' : 'Export for NBE is dimmed until the data is approved'}</b><span>${ok && gate.ok ? 'The data on the NBE forms is approved. Use Export for NBE at the top of the case.' : 'This data fills the NBE sheets. Complete it, then approve it' + (isOpen(c) ? ', and verify the Business details, ' : ', ') + 'to unlock the export. Changing the data later withdraws the approval. Saved with the case, for Underwriting only.'}</span></div></div>
-      ${nbeDataForm(c, true)}
+      ${dataForm(c, 'nbe')}
       ${bar}`;
   }
-  function nbeDataForm(c, missing) {
-    const saved = C.legalData(c.app), groups = nbeGroups(c), all = [].concat.apply([], groups.map(g => g.fields));
+  /* The data form: the same layout for each bank, with its own fields. Both write to the case's Underwriting data, so a field the two
+     banks share (the address, the owner) is entered once. */
+  const bmGroups = c => BMExport.groups(c, C.legalData(c.app));
+  const BANK_FORM = {
+    nbe: { id: 'nbeData', title: 'Data for the NBE forms', groups: c => nbeGroups(c),
+      intro: 'From the KYC field gap analysis: every field marked \u201cNo\u201d under \u201cExists in App?\u201d that the NBE sheets use. Each shows its row number, what the analysis says about it, and the sheets it sits on.', introTitle: 'Fields the application does not have' },
+    bm: { id: 'bmData', title: 'Data for the Bank Misr sheets', groups: c => bmGroups(c),
+      intro: 'What Bank Misr\u2019s sheets ask for that the application does not hold. Each shows whether the bank requires it and the sheets it goes on. The same fields are written for every case in the batch.', introTitle: 'Fields the application does not have' },
+  };
+  const flat = groups => [].concat.apply([], groups.map(g => g.fields));
+  function dataForm(c, bank) {
+    const B = BANK_FORM[bank], saved = C.legalData(c.app), groups = B.groups(c), all = flat(groups);
     const val = f => saved[f.k] != null ? saved[f.k] : (f.def || '');
     const filled = all.filter(f => String(val(f)).trim()).length;
     const input = f => {
@@ -401,22 +415,55 @@
         : f.type === 'textarea' ? `<textarea class="textarea" ${common} style="min-height:72px"${f.rtl ? ' dir="rtl"' : ''}>${v}</textarea>`
         : `<input class="input" ${common} type="text" value="${v}" autocomplete="off"${f.calc ? ' readonly' : ''}>`;
     };
-    return `<details id="nbeData" class="cfg-card" open>
-      <summary class="cfg-head" style="cursor:pointer;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Data for the NBE forms</span><span class="muted" style="font-weight:400;font-size:13px">${filled} of ${all.length} filled</span></summary>
+    return `<details id="${B.id}" class="cfg-card" open>
+      <summary class="cfg-head" style="cursor:pointer;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>${esc(B.title)}</span><span class="muted" style="font-weight:400;font-size:13px">${filled} of ${all.length} filled</span></summary>
       <div style="padding:16px;display:flex;flex-direction:column;gap:20px">
-        ${groups.map((g, gi) => `${gi === 0 ? `<div class="alert info">${C.icon('info', 'hi-lg')}<div class="at"><b>Fields the application does not have</b><span>From the KYC field gap analysis: every field marked \u201cNo\u201d under \u201cExists in App?\u201d that the NBE sheets use. Each shows its row number, what the analysis says about it, and the sheets it sits on.</span></div></div>` : ''}<div><div class="sub-h" style="margin-bottom:12px">${esc(g.title)}</div><div class="lg-grid" style="padding:0">${g.fields.map(f => `<div class="field${f.wide ? ' wide' : ''}"><label for="lg_${f.k}">${esc(f.label)}${f.n ? ` <span class="gapn">#${f.n}</span>` : ''}</label>${input(f)}${f.n ? `<span class="gaptags"><span class="chip ${f.tag === 'Required' ? 'warning' : 'neutral'}">${esc(f.tag)}</span><span class="muted">${esc(f.sheets.join(' \u00b7 '))}</span></span>` : ''}<span class="fhint">${esc(f.hint || '')}</span><span class="err" id="lgerr_${f.k}" hidden></span></div>`).join('')}</div></div>`).join('')}
-        <div class="review-bar"><span class="muted" style="font-size:13px">Saved with the case, for Underwriting only. Changes are logged with the old and new value.</span><button class="btn btn-primary" type="button" id="legalSave">Save changes</button></div>
+        ${groups.map((g, gi) => `${gi === 0 && B.intro ? `<div class="alert info">${C.icon('info', 'hi-lg')}<div class="at"><b>${esc(B.introTitle)}</b><span>${esc(B.intro)}</span></div></div>` : ''}<div><div class="sub-h" style="margin-bottom:12px">${esc(g.title)}</div><div class="lg-grid" style="padding:0">${g.fields.map(f => `<div class="field${f.wide ? ' wide' : ''}"><label for="lg_${f.k}">${esc(f.label)}${f.n ? ` <span class="gapn">#${f.n}</span>` : ''}</label>${input(f)}${f.sheets ? `<span class="gaptags"><span class="chip ${f.tag === 'Required' ? 'warning' : 'neutral'}">${esc(f.tag)}</span><span class="muted">${esc(f.sheets.join(' \u00b7 '))}</span></span>` : ''}<span class="fhint">${esc(f.hint || '')}</span><span class="err" id="lgerr_${f.k}" hidden></span></div>`).join('')}</div></div>`).join('')}
+        <div class="review-bar"><span class="muted" style="font-size:13px">Saved with the case, for Underwriting only. Changes are logged with the old and new value.</span><button class="btn btn-primary" type="button" id="legalSave" data-bank="${bank}">Save changes</button></div>
       </div></details>`;
   }
-  function saveLegalForm(c) {
-    const all = [].concat.apply([], nbeGroups(c).map(g => g.fields)), next = {}, labels = {};
+  /* The fields of each bank's form that applies to this case, to know whose approval a change withdraws. */
+  function bankForms(c) {
+    const m = {};
+    if (nbeApplies(c)) m.nbe = { label: 'data for the NBE forms', keys: flat(nbeGroups(c)).map(f => f.k) };
+    if (C.bmApplies(c)) m.bm = { label: 'data for the Bank Misr batch', keys: flat(bmGroups(c)).map(f => f.k) };
+    return m;
+  }
+  function saveLegalForm(c, bank) {
+    const all = flat(BANK_FORM[bank].groups(c)), next = {}, labels = {};
+    const fail = (k, msg) => { $('lgerr_' + k).textContent = msg; $('lgerr_' + k).hidden = false; $('lg_' + k).classList.add('invalid'); $('lg_' + k).focus(); };
     all.filter(f => !f.calc).forEach(f => { labels[f.k] = f.label; const el = $('lg_' + f.k); next[f.k] = el ? el.value.trim() : ''; $('lgerr_' + f.k).hidden = true; });
-    if (next.ownerIdType === 'National ID' && next.ownerId && !/^\d{14}$/.test(next.ownerId)) {
-      $('lgerr_ownerId').textContent = 'A national ID has 14 digits.'; $('lgerr_ownerId').hidden = false; $('lg_ownerId').classList.add('invalid'); $('lg_ownerId').focus(); return;
-    }
-    const n = C.saveLegal(c.app, next, labels);
+    if (next.ownerIdType === 'National ID' && next.ownerId && !/^\d{14}$/.test(next.ownerId)) { fail('ownerId', 'A national ID has 14 digits.'); return; }
+    const bad = all.filter(f => f.pattern && next[f.k] && !f.pattern.test(next[f.k]))[0];
+    if (bad) { fail(bad.k, bad.patternMsg); return; }
+    const n = C.saveLegal(c.app, next, labels, bankForms(c));
     render();
     C.toast(n ? `${n} field${n === 1 ? '' : 's'} saved with this case.` : 'No changes to save.');
+  }
+
+  /* The Bank Misr batch tab: the data its sheets need, approved here; approved cases are collected on the batch page. */
+  function panelBm(c) {
+    const saved = C.legalData(c.app), r = c.local.review.bm || {}, miss = BMExport.missing(c, saved).length, ok = r.state === 'ok', gate = C.bmGate(c), sent = C.bmSent(c);
+    const state = sent ? ['success', 'checkCircle', 'Sent to Bank Misr', `This case went out in the batch ${sent.id} on ${C.fmtDateTime(sent.ts)}. If you change the data and approve it again, it goes out in the next batch.`]
+      : ok && gate.ok ? ['success', 'checkCircle', 'In today\u2019s batch', 'The data is approved. This case goes to Bank Misr with the other cases approved today, in one set of sheets at the end of the day.']
+      : ok ? ['info', 'info', 'Data approved', 'Verify the Business details to put this case in the batch.']
+      : ['info', 'lock', 'Not in the batch yet', 'Bank Misr takes the cases together, once a day, not one by one. This case joins the batch when the data below is approved' + (isOpen(c) ? ' and the Business details are verified' : '') + '. Changing the data later withdraws the approval. Saved with the case, for Underwriting only.'];
+    const bar = ok
+      ? `<div class="review-bar"><span class="st" style="color:var(--success-text)">${C.icon('checkCircle')}Data approved by ${esc(r.by || '')} \u00b7 ${C.fmtDateTime(r.ts)}</span><div class="rrow-act"><button class="link-btn" type="button" data-clear="bm" data-label="Data for the Bank Misr batch">Withdraw approval</button></div></div>`
+      : `<div class="review-bar"><span class="st" style="color:var(--cadet-base)">${C.icon('info')}${miss ? miss + ' required field' + (miss === 1 ? '' : 's') + ' still empty' : 'Not approved yet'}</span>
+          <button class="btn btn-success" type="button" id="bmApprove"${miss ? ' disabled title="Fill in the required fields first"' : ''}>${C.icon('check', 'hi-18', 2)}Approve data</button></div>`;
+    const files = BMExport.review(c, saved);
+    return `<h2 class="sec-title">Bank Misr batch</h2>
+      <div class="alert ${state[0]}">${C.icon(state[1], 'hi-lg')}<div class="at"><b>${esc(state[2])}</b><span>${esc(state[3])}${ok ? ` <a class="link-btn" href="bm-batch.html" style="font-size:14px">Open the batch</a>` : ''}</span></div></div>
+      ${dataForm(c, 'bm')}
+      ${bar}
+      <div style="display:flex;flex-direction:column;gap:12px"><h3 style="font-family:'Noto Sans',sans-serif;font-size:16px;color:var(--cadet-base)">What this case adds to the batch sheets</h3>
+        ${files.map(f => `<div class="cfg-card"><div class="cfg-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:10px;min-width:0"><span class="chip neutral">XLSX</span><span>${esc(f.name)}</span><span class="muted" style="font-weight:400;font-size:13px">one row</span></span>
+          ${f.missing.length ? `<span class="chip warning">${f.missing.length} empty</span>` : '<span class="chip positive">Complete</span>'}</div>
+          ${f.missing.length ? `<div style="padding:10px 16px;font-size:13px;color:var(--warning-text);background:var(--warning-bg)">Empty: ${f.missing.map(m => esc(m.label)).join(', ')}</div>` : ''}
+          <details style="padding:10px 16px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--link)">Review the ${f.filled} filled value${f.filled === 1 ? '' : 's'}</summary>
+            <div style="margin-top:10px;display:flex;flex-direction:column">${f.rows.map(x => `<div class="crow" style="padding:4px 0;font-size:13px"><span class="k" style="font-size:12px">${esc(x.label)}</span><span class="v" style="font-weight:${x.value ? 600 : 400};color:${x.value ? 'var(--foreground)' : 'var(--cadet-06)'};white-space:pre-line">${x.value ? esc(x.value) : '\u2014'}</span></div>`).join('')}</div></details></div>`).join('')}</div>`;
   }
 
   function panelInternal(c) {
@@ -489,7 +536,7 @@
     if (!c) { $('nfIc').innerHTML = C.icon('inbox', 'hi-lg'); return; }
     if (!tabList(c).some(t => t[0] === tab)) tab = 'business';
     renderHead(c); renderTabs(c);
-    $('panel').innerHTML = { business: panelBusiness, documents: panelDocuments, pricing: panelPricing, payout: panelPayout, contracts: panelContracts, internal: panelInternal, nbe: panelNbe }[tab](c);
+    $('panel').innerHTML = { business: panelBusiness, documents: panelDocuments, pricing: panelPricing, payout: panelPayout, contracts: panelContracts, internal: panelInternal, nbe: panelNbe, bm: panelBm }[tab](c);
     renderAside(c);
     const f = document.querySelector('#panel [data-focus]'); if (f) f.focus();
   }
@@ -517,7 +564,9 @@
     if (g('#nbAll')) { nbeDownloadAll(c); return; }
     if (g('[data-nbe-fill]')) { C.closeDrawer('nbeDrawer'); tab = 'nbe'; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     if (g('#nbeApprove')) { if (nbeMissing(c)) { C.toast('Fill in the required fields first.'); return; } C.setReview(c.app, 'nbe', 'ok', '', 'Data for the NBE forms'); render(); C.toast('NBE data approved. Export for NBE is now available.'); return; }
-    if (g('#legalSave')) { saveLegalForm(c); return; }
+    if (g('#bmBtn')) { const gate = C.bmGate(c); if (!gate.ok) { C.toast(gate.why); tab = (/Business/.test(gate.why) && isOpen(c)) ? 'business' : 'bm'; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; } location.href = 'bm-batch.html'; return; }
+    if (g('#bmApprove')) { if (BMExport.missing(c, C.legalData(c.app)).length) { C.toast('Fill in the required fields first.'); return; } C.setReview(c.app, 'bm', 'ok', '', 'Data for the Bank Misr batch'); render(); C.toast('Bank Misr data approved. The case is in today\u2019s batch.'); return; }
+    if ((b = g('#legalSave'))) { saveLegalForm(c, b.dataset.bank || 'nbe'); return; }
     if (g('#intUpload')) { $('intFile').click(); return; }
     if ((b = g('[data-int-view]'))) { viewInternal(c, b.dataset.intView, b); return; }
     if ((b = g('[data-int-dl]'))) { downloadInternal(c, b.dataset.intDl); return; }
@@ -746,6 +795,7 @@
 
 
   window.addEventListener('nbe-ready', render);
+  window.addEventListener('bm-ready', render);
   render();
 </script>
 </body>

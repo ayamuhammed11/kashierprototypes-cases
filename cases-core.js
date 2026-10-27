@@ -190,16 +190,47 @@ window.Cases = (function () {
   /* Legal and bank data Underwriting enters for the banks and vendors: the KYC fields the application only partly covers.
      Saved with the case; every change is logged with its old and new value, and none of it reaches Sales. */
   const legalData = app => local(app.id).legal || {};
-  function saveLegal(app, next, labels) {
+  function saveLegal(app, next, labels, banks) {
     const prev = legalData(app), changes = [];
-    Object.keys(next).forEach(k => { const a = prev[k] == null ? '' : String(prev[k]), b = String(next[k] == null ? '' : next[k]).trim(); if (a !== b) changes.push({ label: labels[k] || k, from: a, to: b }); });
+    Object.keys(next).forEach(k => { const a = prev[k] == null ? '' : String(prev[k]), b = String(next[k] == null ? '' : next[k]).trim(); if (a !== b) changes.push({ key: k, label: labels[k] || k, from: a, to: b }); });
     if (!changes.length) return 0;
     save(app.id, { legal: Object.assign({}, prev, next) });
-    // The data on the NBE forms changed, so its approval no longer holds: it has to be approved again before exporting.
+    // The data a bank's forms use changed, so that approval no longer holds: it has to be approved again. banks lists, per review key,
+    // the label and the fields of each bank's form; a field shared by two banks withdraws both approvals.
+    const changed = changes.map(x => x.key);
     const l = local(app.id);
-    if (l.review.nbe && l.review.nbe.state === 'ok') { delete l.review.nbe; save(app.id, { review: l.review }); addEvent(app, 'Withdrew the approval of the data for the NBE forms \u2014 it changed', 'Changed'); }
-    addEvent(app, 'Updated the underwriting legal data (' + changes.length + ' field' + (changes.length === 1 ? '' : 's') + ')', 'Changed', null, changes);
+    Object.keys(banks || {}).forEach(key => {
+      const b = banks[key];
+      if (l.review[key] && l.review[key].state === 'ok' && b.keys.some(k => changed.indexOf(k) !== -1)) { delete l.review[key]; save(app.id, { review: l.review }); addEvent(app, 'Withdrew the approval of the ' + b.label + ' \u2014 it changed', 'Changed'); }
+    });
+    addEvent(app, 'Updated the underwriting legal data (' + changes.length + ' field' + (changes.length === 1 ? '' : 's') + ')', 'Changed', null, changes.map(x => ({ label: x.label, from: x.from, to: x.to })));
     return changes.length;
+  }
+  /* ── Bank Misr batch ──
+     Bank Misr is not sent one case at a time: the cases approved during the day are collected and go out together in one set of sheets
+     at the end of it. A case joins the batch once Underwriting approves its Bank Misr data (and, while it is still in review, has
+     verified the business details); sending the batch records it on every case. */
+  const BM_STORE = 'kashierBmBatches';
+  const bmApplies = c => !!(window.BMExport && BMExport.available() && BMExport.hasBm(c.app));
+  function bmGate(c) {
+    const r = c.local.review, why = [];
+    if (c.status === 'submitted' && (r.business || {}).state !== 'ok') why.push('verify the Business details');
+    if ((r.bm || {}).state !== 'ok') why.push('approve the data on the Bank Misr batch tab');
+    return { ok: !why.length, why: why.length ? 'To join the batch, ' + why.join(' and ') + ' first.' : '' };
+  }
+  /* The batch this case's approved data already went out in, if any. Approving the data again after a send puts it in the next batch. */
+  function bmSent(c) {
+    const b = c.local.bmBatch, a = c.local.review.bm;
+    return b && a && a.state === 'ok' && new Date(a.ts) <= new Date(b.ts) ? b : null;
+  }
+  const bmReady = c => bmApplies(c) && bmGate(c).ok && !bmSent(c);
+  const bmBatches = () => { const o = K.readStore(BM_STORE); return Object.keys(o).map(k => o[k]).sort((a, b) => new Date(b.ts) - new Date(a.ts)); };
+  function bmSend(cases, snaps) {
+    const all = K.readStore(BM_STORE), no = Object.keys(all).length + 1, id = 'BM-' + String(no).padStart(3, '0'), ts = new Date().toISOString();
+    all[id] = { id: id, no: no, ts: ts, by: user().name, snaps: snaps };
+    K.writeStore(BM_STORE, all);
+    cases.forEach(c => { save(c.app.id, { bmBatch: { id: id, ts: ts } }); addEvent(c.app, 'Sent to Bank Misr in the batch ' + id, 'Sent'); });
+    return all[id];
   }
   const internalDocs = app => local(app.id).internalDocs || [];
   function addInternalDoc(app, d) {
@@ -342,7 +373,7 @@ window.Cases = (function () {
     if (d) closeDrawer(d.id);
   });
 
-  return { K: K, ME: ME, TEAM: TEAM, user: user, legalData: legalData, saveLegal: saveLegal, INTERNAL_TYPES: INTERNAL_TYPES, internalDocs: internalDocs, addInternalDoc: addInternalDoc, removeInternalDoc: removeInternalDoc, CATALOG: CATALOG, ratesFor: ratesFor, contractsRequired: contractsRequired, STATUS: STATUS, icon: icon, esc: esc, fmtDate: fmtDate, fmtDateTime: fmtDateTime, initials: initials, ageOf: ageOf, chip: chip,
+  return { K: K, ME: ME, TEAM: TEAM, user: user, legalData: legalData, saveLegal: saveLegal, bmApplies: bmApplies, bmGate: bmGate, bmSent: bmSent, bmReady: bmReady, bmBatches: bmBatches, bmSend: bmSend, INTERNAL_TYPES: INTERNAL_TYPES, internalDocs: internalDocs, addInternalDoc: addInternalDoc, removeInternalDoc: removeInternalDoc, CATALOG: CATALOG, ratesFor: ratesFor, contractsRequired: contractsRequired, STATUS: STATUS, icon: icon, esc: esc, fmtDate: fmtDate, fmtDateTime: fmtDateTime, initials: initials, ageOf: ageOf, chip: chip,
     all: all, get: get, local: local, assign: assign, addEvent: addEvent, checks: checks, progress: progress, setReview: setReview, payoutState: payoutState,
     approve: approve, reject: reject, goLive: goLive, addNote: addNote, activity: activity, mountShell: mountShell, toast: toast,
     openDrawer: openDrawer, closeDrawer: closeDrawer, openModal: openModal, closeModal: closeModal, caseNo: caseNo, docKey: docKey, conKey: conKey, conName: conName };

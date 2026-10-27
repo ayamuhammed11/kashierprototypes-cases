@@ -23,6 +23,7 @@
           <h1>Cases</h1>
           <p class="sub" id="pageSub">Sales applications sent to Underwriting, until the account goes live. Open a case to see everything the salesperson submitted, then approve it for the bank or reject it and send it back to Sales.</p>
         </div>
+        <div class="head-actions"><a class="btn btn-outline" id="bmLink" href="bm-batch.html" hidden></a></div>
       </div>
 
       <div class="tabs" id="statusTabs" role="tablist" aria-label="Case status"></div>
@@ -67,9 +68,13 @@
 
 <script src="rate-decisions.js"></script>
 <script src="cases-core.js"></script>
+<script src="bm-export.js"></script>
 <script>
   const C = Cases, esc = C.esc, $ = id => document.getElementById(id);
   C.mountShell({ search: false });
+  // Bank Misr takes its cases as one batch a day; the link shows only where the bank's sheets are available.
+  const showBm = () => { const l = $('bmLink'); l.innerHTML = C.icon('inbox') + 'Bank Misr batch'; l.hidden = !BMExport.available(); };
+  showBm(); window.addEventListener('bm-ready', showBm);
 
   const TABS = [['all', 'All'], ['submitted', 'Underwriting Review'], ['pending-configurations', 'Bank Submission']];
   const S = { tab: 'all', q: '', assignee: '', owner: '', page: 1, per: 10, sort: null, loading: true };

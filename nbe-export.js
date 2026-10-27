@@ -186,7 +186,8 @@ window.NBEExport = (function () {
   function review(c, saved) {
     const v = values(c, saved);
     return packsFor(c).map(p => ({ id: p.id, title: p.title, files: p.files.map(f => {
-      const rows = f.keys.map(k => ({ key: k, label: FIELD[k] || k, value: v[k] == null ? '' : String(v[k]), optional: !!OPTIONAL[k] }));
+      // Kashier's fixed values come from the private defaults file; where it is absent (the public prototype) they stay empty and never block the approval.
+      const rows = f.keys.map(k => ({ key: k, label: FIELD[k] || k, value: v[k] == null ? '' : String(v[k]), optional: !!OPTIONAL[k] || /Kashier fixed value/.test(FIELD[k] || '') }));
       return { id: f.id, name: f.name, ext: f.ext, rows: rows, missing: rows.filter(r => !r.value.trim() && !r.optional), filled: rows.filter(r => r.value.trim()).length };
     }) }));
   }

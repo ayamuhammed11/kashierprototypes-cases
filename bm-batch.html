@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kashier | Bank Misr batch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="cases.css">
+</head>
+<body>
+  <div class="overlay" id="overlay"></div>
+  <div id="shell-side"></div>
+
+  <main class="main">
+    <div class="topbar" id="shell-top"></div>
+
+    <div class="content detail">
+      <div class="page-head">
+        <div>
+          <div class="crumbs"><a href="cases.html">Cases</a><span class="sep">/</span><span class="cur">Bank Misr batch</span></div>
+          <h1>Bank Misr batch</h1>
+          <p class="sub" id="sub">Bank Misr takes its cases together, once a day. Every case whose Bank Misr data is approved joins the batch, one row per case in each sheet.</p>
+        </div>
+        <div class="head-actions" id="actions"></div>
+      </div>
+
+      <div class="stack">
+        <div id="banner"></div>
+        <div class="card" id="secReady"></div>
+        <div class="card" id="secFiles"></div>
+        <div class="card" id="secWait"></div>
+        <div class="card" id="secSent"></div>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal-wrap" id="sendModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="sdT" tabindex="-1">
+    <div><h2 id="sdT" data-focus tabindex="-1">Mark the batch as sent to Bank Misr?</h2><p class="md" id="sdD"></p></div>
+    <div class="modal-foot"><button class="btn btn-outline btn-sm" type="button" data-close-modal>Cancel</button><button class="btn btn-success btn-sm" type="button" id="sdGo">Mark as sent</button></div>
+  </div></div>
+
+<script src="rate-decisions.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="cases-core.js"></script>
+<script src="bm-defaults.js" onerror="void 0"></script>
+<script src="bm-export.js"></script>
+<script>
+  const C = Cases, esc = C.esc, $ = id => document.getElementById(id);
+  C.mountShell({ search: false });
+  const mgr = C.user().canReassign;
+
+  /* The cases for Bank Misr this person can see, split into those in the batch and those still waiting on something. */
+  const bmCases = () => C.all().filter(C.bmApplies);
+  const needs = c => [c.status === 'submitted' && (c.local.review.business || {}).state !== 'ok' ? 'Business details not verified' : '', (c.local.review.bm || {}).state !== 'ok' ? 'Data not approved' : ''].filter(Boolean);
+  const chans = c => [BMExport.needsOnline(c.app) ? 'Online' : '', BMExport.needsPos(c.app) ? 'POS' : ''].filter(Boolean);
+  const chanChips = c => chans(c).map(x => `<span class="chip neutral">${x}</span>`).join(' ');
+  const href = c => 'case-details.html?app=' + encodeURIComponent(c.app.id);
+  const sec = (title, sub, body) => `<div style="padding:20px 24px 12px"><h2 class="sec-title">${esc(title)}</h2>${sub ? `<p style="margin:4px 0 0;font-size:14px;color:var(--cadet-base)">${sub}</p>` : ''}</div>${body}`;
+  const emptyBox = (ic, t, d) => `<div class="empty"><div class="ic">${C.icon(ic, 'hi-lg', 1.5)}</div><div class="t">${esc(t)}</div><div class="d">${esc(d)}</div></div>`;
+  const dayLabel = () => BMExport.fmtDay(new Date());
+
+  function render() {
+    const all = bmCases(), ready = all.filter(C.bmReady), waiting = all.filter(c => !C.bmReady(c) && !C.bmSent(c)), snaps = ready.map(c => BMExport.snapshot(c, C.legalData(c.app))), files = BMExport.filesOf(snaps);
+    const rows = files.reduce((n, f) => n + f.count, 0);
+
+    $('actions').innerHTML = mgr ? `<button class="btn btn-outline" type="button" id="dlAll"${files.length ? '' : ' disabled'}>${C.icon('download')}Download all${files.length ? ' (' + files.length + ')' : ''}</button>
+      <button class="btn btn-primary" type="button" id="sendBtn"${ready.length ? '' : ' disabled'}>${C.icon('check', 'hi-18', 2)}Mark batch as sent</button>` : '';
+    $('banner').innerHTML = `<div class="alert info" role="status">${C.icon('inbox', 'hi-lg')}<div class="at"><b>Batch of ${esc(dayLabel())}</b><span>${mgr
+      ? 'Everything approved by the end of the day goes out together. Download the sheets and send them to Bank Misr, then mark the batch as sent: each case records it, and the next batch starts empty.'
+      : 'The Underwriting Manager downloads and sends the batch. Your cases that are ready are included automatically; you see only your own here.'}</span></div></div>`;
+
+    // Ready cases
+    $('secReady').innerHTML = sec('Ready for the batch (' + ready.length + ')', 'Bank Misr data approved' + (ready.length ? ' · ' + ready.length + ' case' + (ready.length === 1 ? '' : 's') + ' · ' + rows + ' sheet row' + (rows === 1 ? '' : 's') : ''), ready.length ? `
+      <div class="dt-wrap table-scroll"><table class="dt"><thead><tr><th>Case ID</th><th>Merchant</th><th>Sheets</th><th>Assignee</th><th>Data approved</th><th></th></tr></thead><tbody>${ready.map(c => `
+        <tr tabindex="0" data-href="${href(c)}"><td><span class="idc">${esc(c.no)}</span></td>
+          <td><div class="two"><span class="p"><span class="t">${esc(c.app.biz)}</span></span><span class="s">${esc(c.mid || 'MID pending')}</span></div></td>
+          <td>${chanChips(c)}</td>
+          <td>${c.assignee ? `<span class="assignee"><span class="avatar">${esc(C.initials(c.assignee))}</span>${esc(c.assignee)}</span>` : '<span class="muted">—</span>'}</td>
+          <td><div class="two"><span class="datec">${C.fmtDateTime(c.local.review.bm.ts)}</span><span class="s">${esc(c.local.review.bm.by || '')}</span></div></td>
+          <td class="cell-end"><span class="row-open" aria-hidden="true">${C.icon('right', 'hi-sm', 2)}</span></td></tr>`).join('')}</tbody></table></div>
+      <div class="cards" style="padding:12px">${ready.map(c => `<button class="rcard" type="button" data-href="${href(c)}"><div class="top"><div class="two"><span class="p"><span class="t" style="font-weight:600">${esc(c.app.biz)}</span></span><span class="s">${esc(c.no)} · ${esc(c.mid || 'MID pending')}</span></div><span>${chanChips(c)}</span></div>
+        <div class="meta"><div><div class="k">Assignee</div><div class="v">${esc(c.assignee || '—')}</div></div><div><div class="k">Data approved</div><div class="v">${C.fmtDate(c.local.review.bm.ts)}</div></div></div></button>`).join('')}</div>`
+      : emptyBox('inbox', 'Nothing in the batch yet', 'A case joins the batch when its Bank Misr data is approved on the case page.'));
+
+    // The sheets
+    $('secFiles').innerHTML = sec('Sheets in this batch', 'One row per case in each sheet. The sheets are Bank Misr’s own, with the merchant rows filled in.', files.length ? `
+      <div style="padding:0 24px 24px;display:flex;flex-direction:column;gap:12px">${files.map(f => `<div class="cfg-card"><div class="cfg-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:0">
+        <span style="display:flex;align-items:center;gap:10px;min-width:0"><span class="chip neutral">XLSX</span><span>${esc(f.name)}</span><span class="muted" style="font-weight:400;font-size:13px">${f.channel === 'online' ? 'Online' : 'POS'} · ${f.count} row${f.count === 1 ? '' : 's'}</span></span>
+        ${mgr ? `<button class="btn btn-outline btn-sm" type="button" data-dl="${esc(f.id)}">${C.icon('download', 'hi-sm')}Download</button>` : ''}</div></div>`).join('')}</div>`
+      : emptyBox('doc', 'No sheets yet', 'The sheets are built from the cases that are ready.'));
+
+    // Waiting
+    $('secWait').innerHTML = sec('Not ready yet (' + waiting.length + ')', 'Cases for Bank Misr that cannot join the batch until these are done.', waiting.length ? `
+      <div class="dt-wrap table-scroll"><table class="dt"><thead><tr><th>Case ID</th><th>Merchant</th><th>Sheets</th><th>Assignee</th><th>Needs</th><th></th></tr></thead><tbody>${waiting.map(c => `
+        <tr tabindex="0" data-href="${href(c)}"><td><span class="idc">${esc(c.no)}</span></td>
+          <td><div class="two"><span class="p"><span class="t">${esc(c.app.biz)}</span></span><span class="s">${esc(c.mid || 'MID pending')}</span></div></td>
+          <td>${chanChips(c)}</td>
+          <td>${c.assignee ? `<span class="assignee"><span class="avatar">${esc(C.initials(c.assignee))}</span>${esc(c.assignee)}</span>` : '<span class="muted">—</span>'}</td>
+          <td>${needs(c).map(x => `<span class="chip warning">${esc(x)}</span>`).join(' ')}</td>
+          <td class="cell-end"><span class="row-open" aria-hidden="true">${C.icon('right', 'hi-sm', 2)}</span></td></tr>`).join('')}</tbody></table></div>
+      <div class="cards" style="padding:12px">${waiting.map(c => `<button class="rcard" type="button" data-href="${href(c)}"><div class="top"><div class="two"><span class="p"><span class="t" style="font-weight:600">${esc(c.app.biz)}</span></span><span class="s">${esc(c.no)} · ${esc(c.mid || 'MID pending')}</span></div><span>${chanChips(c)}</span></div>
+        <div>${needs(c).map(x => `<span class="chip warning">${esc(x)}</span>`).join(' ')}</div></button>`).join('')}</div>`
+      : emptyBox('checkCircle', 'Every Bank Misr case is ready', 'Nothing is waiting on a review or on its data.'));
+
+    // Sent
+    const sent = C.bmBatches();
+    $('secSent').innerHTML = sec('Sent batches', mgr ? '' : 'Visible to the Underwriting Manager.', !mgr ? '' : sent.length ? `
+      <div class="dt-wrap table-scroll"><table class="dt"><thead><tr><th>Batch</th><th>Sent</th><th>Sent by</th><th>Cases</th><th>Sheets</th><th></th></tr></thead><tbody>${sent.map(b => `
+        <tr><td><span class="idc">${esc(b.id)}</span></td><td><span class="datec">${C.fmtDateTime(b.ts)}</span></td><td>${esc(b.by)}</td>
+          <td>${b.snaps.length}</td><td>${BMExport.filesOf(b.snaps).length}</td>
+          <td class="cell-end"><button class="btn btn-outline btn-sm" type="button" data-dl-batch="${esc(b.id)}">${C.icon('download', 'hi-sm')}Download again</button></td></tr>`).join('')}</tbody></table></div>
+      <div class="cards" style="padding:12px">${sent.map(b => `<div class="rcard"><div class="top"><div class="two"><span class="p"><span class="t" style="font-weight:600">${esc(b.id)}</span></span><span class="s">${C.fmtDateTime(b.ts)} · ${esc(b.by)}</span></div><span class="chip neutral">${b.snaps.length} case${b.snaps.length === 1 ? '' : 's'}</span></div>
+        <button class="btn btn-outline btn-sm" type="button" data-dl-batch="${esc(b.id)}">${C.icon('download', 'hi-sm')}Download again</button></div>`).join('')}</div>`
+      : emptyBox('mail', 'No batch sent yet', 'A batch appears here once it is marked as sent.'));
+    if (!mgr) $('secSent').hidden = true;
+  }
+
+  async function downloadFiles(snaps, label, when, onlyId) {
+    try {
+      const files = BMExport.filesOf(snaps).filter(f => !onlyId || f.id === onlyId);
+      if (onlyId) { BMExport.save(await BMExport.build(onlyId, snaps, when), BMExport.fileName(label, files[0].name)); return files.length; }
+      const zip = new JSZip();
+      for (const f of files) zip.file(BMExport.fileName(label, f.name), await BMExport.build(f.id, snaps, when));
+      BMExport.save(await zip.generateAsync({ type: 'blob' }), 'Bank Misr batch - ' + label + '.zip');
+      return files.length;
+    } catch (e) { C.toast(e.message || 'The files could not be created.'); return 0; }
+  }
+  const readySnaps = () => bmCases().filter(C.bmReady).map(c => BMExport.snapshot(c, C.legalData(c.app)));
+
+  document.addEventListener('click', async e => {
+    const g = sel => e.target.closest(sel);
+    let b;
+    if ((b = g('[data-dl]'))) { if (await downloadFiles(readySnaps(), dayLabel(), Date.now(), b.dataset.dl)) C.toast('Sheet downloaded.'); return; }
+    if (g('#dlAll')) { const n = await downloadFiles(readySnaps(), dayLabel(), Date.now()); if (n) C.toast(n + ' sheet' + (n === 1 ? '' : 's') + ' downloaded as one zip.'); return; }
+    if ((b = g('[data-dl-batch]'))) { const batch = C.bmBatches().find(x => x.id === b.dataset.dlBatch); if (batch && await downloadFiles(batch.snaps, batch.id, batch.ts)) C.toast('The sheets of ' + batch.id + ' downloaded as one zip.'); return; }
+    if (g('#sendBtn')) { const n = bmCases().filter(C.bmReady).length; $('sdD').innerHTML = `<b>${n} case${n === 1 ? '' : 's'}</b> will be recorded as sent to Bank Misr in one batch. Each case logs it, and the cases leave this batch. Download the sheets first if you have not sent them yet — you can also download them again afterwards.`; C.openModal('sendModal', g('#sendBtn')); return; }
+    if (g('[data-close-modal]')) { C.closeModal(g('.modal-wrap').id); return; }
+    if (e.target.classList && e.target.classList.contains('modal-wrap')) { C.closeModal(e.target.id); return; }
+    if ((b = g('[data-href]'))) location.href = b.dataset.href;
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') { const r = e.target.closest && e.target.closest('tr[data-href]'); if (r) location.href = r.dataset.href; } });
+  $('sdGo').addEventListener('click', () => {
+    const cases = bmCases().filter(C.bmReady); if (!cases.length) { C.closeModal('sendModal'); return; }
+    const batch = C.bmSend(cases, cases.map(c => BMExport.snapshot(c, C.legalData(c.app))));
+    C.closeModal('sendModal'); render();
+    C.toast('Batch ' + batch.id + ' marked as sent: ' + cases.length + ' case' + (cases.length === 1 ? '' : 's') + '.');
+  });
+
+  render();
+  window.addEventListener('bm-ready', render);
+</script>
+</body>
+</html>
