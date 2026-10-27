@@ -330,47 +330,50 @@
      drawer, saved with the case (Underwriting only) and logged with the old and new value. */
   const LEGAL_FORMS = ['Sole proprietorship', 'Limited liability company (LLC)', 'Joint stock company (JSC)', 'One-person company', 'General partnership', 'Limited partnership', 'Other'];
   function nbeGroups(c) {
-    const nd = NBEExport.defaults(c), pos = NBEExport.needsPos(c.app), onl = NBEExport.needsOnline(c.app);
-    const g = [
-      { title: 'Company', fields: [
-        { k: 'legalName', label: 'Company (legal) name', def: nd.legalName, hint: 'Defaults to the business name; change it if the legal name differs.' },
+    const nd = NBEExport.defaults(c), pos = NBEExport.needsPos(c.app), onl = NBEExport.needsOnline(c.app), saved = C.legalData(c.app);
+    const gap = NBEExport.gapFields(c.app);
+    // 1) the fields the application does not have ("No" in the field gap analysis), as the analysis groups them
+    const groups = NBEExport.GAP_GROUPS.map((title, gi) => ({ title: title, gap: true, fields: gap.filter(f => f.g === gi).map(f => {
+      const split = String(saved.ownerName || '').trim().split(/\s+/).filter(Boolean);
+      let def = nd[f.k] != null && nd[f.k] !== '' ? nd[f.k] : (f.def || '');
+      if (f.k === 'ownerFirstName') def = split[0] || ''; if (f.k === 'ownerLastName') def = split.slice(1).join(' ');
+      if (f.k === 'descriptor') def = NBEExport.descriptorOf(c.app);
+      return Object.assign({}, f, { def: def });
+    }) })).filter(g => g.fields.length);
+    // 2) the other data the forms need that the application only partly holds, or that depends on the bank's own settings
+    const rest = [
+      { title: 'Company and owner ID', fields: [
         { k: 'legalForm', label: 'Legal form / registration type', type: 'select', options: LEGAL_FORMS, hint: 'Written in Arabic as the company type.' },
         { k: 'crNumber', label: 'Commercial registration number', hint: 'POS KYC sheet.' },
         { k: 'taxNumber', label: 'Tax card number', hint: 'POS KYC sheet.' },
         { k: 'activity', label: 'Business activity description', type: 'textarea', wide: true, hint: 'Used when there is no Arabic description.' },
-        { k: 'activityAr', label: 'Business activity description (Arabic)', type: 'textarea', rtl: true, wide: true, hint: 'Goes on the email, the e-commerce form and the POS form.' } ] },
-      { title: 'Owner', fields: [
-        { k: 'ownerName', label: 'Owner full name', hint: 'Person in charge; split into first name and surname on the sheets.' },
+        { k: 'activityAr', label: 'Business activity description (Arabic)', type: 'textarea', rtl: true, wide: true, hint: 'Goes on the email, the e-commerce form and the POS form.' },
+        { k: 'ownerName', label: 'Owner full name', hint: 'The person in charge on the forms.' },
         { k: 'ownerIdType', label: 'Owner ID type', type: 'select', options: ['National ID', 'Passport'], hint: '' },
         { k: 'ownerId', label: 'Owner national ID / legal ID number', hint: 'A national ID is 14 digits.' },
         { k: 'ownerNationality', label: 'Owner nationality', hint: 'Only needed for a foreign owner; otherwise EGYPTIAN.' },
-        { k: 'signatory', label: 'Authorized signatory name', hint: 'Defaults to the owner on the forms.' } ] },
-      { title: 'Address and bank', fields: [
-        { k: 'address1', label: 'Business address line 1', hint: 'Needed on every form.' },
-        { k: 'address2', label: 'Business address line 2', hint: 'Optional.' },
-        { k: 'governorate', label: 'Governorate', type: 'select', options: NBEExport.GOVERNORATES, hint: 'Printed with the postal code, for example \u201cCairo \u2014 11511\u201d.' },
-        { k: 'city', label: 'City', hint: 'Written in capitals on the sheets.' },
-        { k: 'postalCode', label: 'Postal code', hint: '' },
-        { k: 'mcc', label: 'Merchant category code (MCC)', hint: 'Four digits, from the merchant\u2019s sector.' },
+        { k: 'signatory', label: 'Authorized signatory name', hint: 'Defaults to the owner on the forms.' },
         { k: 'merchantCategory', label: 'Merchant category', def: nd.merchantCategory, hint: 'Written in the email to NBE. Defaults to the industry.' },
         { k: 'bankAccount', label: 'Merchant bank account number', def: nd.bankAccount, hint: 'Optional.' } ] },
     ];
-    if (onl) g.push({ title: 'Online forms', fields: [
+    if (onl) rest.push({ title: 'Online forms', fields: [
       { k: 'nbeBranch', label: 'Merchant NBE branch', def: nd.nbeBranch, hint: 'Kashier\u2019s branch by default; change it for the merchant\u2019s own branch.' },
       { k: 'platformType', label: 'Platform type', def: nd.platformType, hint: '' }, { k: 'gateway', label: 'Gateway', def: nd.gateway, hint: '' },
       { k: 'programmingLanguage', label: 'Programming language', hint: 'Optional.' },
       { k: 'hostedPayments', label: 'Hosted payments', type: 'select', options: ['Hosted session', 'Hosted checkout'], hint: 'Ticks one of the two options on the e-commerce form.' } ] });
-    if (pos) g.push({ title: 'POS forms', fields: [
-      { k: 'ownerTitle', label: 'Owner title', type: 'select', options: ['MR', 'MRS'], hint: 'First column of the POS KYC sheet.' },
-      { k: 'nbeCityCode', label: 'NBE city code', hint: 'For example \u201cALEX 02A\u201d. Used instead of the city on the POS KYC sheet.' },
+    if (pos) rest.push({ title: 'POS forms', fields: [
       { k: 'nbeMerchantId', label: 'NBE-assigned merchant ID', hint: 'Optional. Issued by the bank, so usually empty when you first send.' } ] });
-    return g;
+    return groups.concat(rest);
   }
   /* The NBE sheets apply to a case with a PF Card service on NBE, and are exported only after Underwriting approves the data that
      goes into them: the business details and the data entered for the forms. A case already at the bank was approved in full, so
      only the NBE data needs approving there. */
   const nbeApplies = c => !!(window.NBEExport && NBEExport.available() && NBEExport.hasNbe(c.app));
-  const nbeMissing = c => NBEExport.review(c, C.legalData(c.app)).reduce((n, p) => n + p.files.reduce((m, f) => m + f.missing.length, 0), 0);
+  const nbeMissing = c => {
+    const saved = C.legalData(c.app), tmpl = NBEExport.review(c, saved).reduce((n, p) => n + p.files.reduce((m, f) => m + f.missing.length, 0), 0);
+    const dflt = NBEExport.defaults(c), gapReq = NBEExport.gapFields(c.app).filter(f => f.req && !String(saved[f.k] != null && saved[f.k] !== '' ? saved[f.k] : (dflt[f.k] || f.def || '')).trim()).length;
+    return tmpl + gapReq;
+  };
   function nbeGate(c) {
     const r = c.local.review, why = [];
     if (isOpen(c) && (r.business || {}).state !== 'ok') why.push('verify the Business details');
@@ -396,18 +399,18 @@
       const common = `id="lg_${f.k}" data-legal="${f.k}"`, v = esc(val(f));
       return f.type === 'select' ? `<select class="select" ${common}><option value="">Select\u2026</option>${f.options.map(o => `<option${val(f) === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`
         : f.type === 'textarea' ? `<textarea class="textarea" ${common} style="min-height:72px"${f.rtl ? ' dir="rtl"' : ''}>${v}</textarea>`
-        : `<input class="input" ${common} type="text" value="${v}" autocomplete="off">`;
+        : `<input class="input" ${common} type="text" value="${v}" autocomplete="off"${f.calc ? ' readonly' : ''}>`;
     };
     return `<details id="nbeData" class="cfg-card" open>
       <summary class="cfg-head" style="cursor:pointer;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Data for the NBE forms</span><span class="muted" style="font-weight:400;font-size:13px">${filled} of ${all.length} filled</span></summary>
       <div style="padding:16px;display:flex;flex-direction:column;gap:20px">
-        ${groups.map(g => `<div><div class="sub-h" style="margin-bottom:12px">${esc(g.title)}</div><div class="lg-grid" style="padding:0">${g.fields.map(f => `<div class="field${f.wide ? ' wide' : ''}"><label for="lg_${f.k}">${esc(f.label)}</label>${input(f)}<span class="fhint">${esc(f.hint || '')}</span><span class="err" id="lgerr_${f.k}" hidden></span></div>`).join('')}</div></div>`).join('')}
+        ${groups.map((g, gi) => `${gi === 0 ? `<div class="alert info">${C.icon('info', 'hi-lg')}<div class="at"><b>Fields the application does not have</b><span>From the KYC field gap analysis: every field marked \u201cNo\u201d under \u201cExists in App?\u201d that the NBE sheets use. Each shows its row number, what the analysis says about it, and the sheets it sits on.</span></div></div>` : ''}<div><div class="sub-h" style="margin-bottom:12px">${esc(g.title)}</div><div class="lg-grid" style="padding:0">${g.fields.map(f => `<div class="field${f.wide ? ' wide' : ''}"><label for="lg_${f.k}">${esc(f.label)}${f.n ? ` <span class="gapn">#${f.n}</span>` : ''}</label>${input(f)}${f.n ? `<span class="gaptags"><span class="chip ${f.tag === 'Required' ? 'warning' : 'neutral'}">${esc(f.tag)}</span><span class="muted">${esc(f.sheets.join(' \u00b7 '))}</span></span>` : ''}<span class="fhint">${esc(f.hint || '')}</span><span class="err" id="lgerr_${f.k}" hidden></span></div>`).join('')}</div></div>`).join('')}
         <div class="review-bar"><span class="muted" style="font-size:13px">Saved with the case, for Underwriting only. Changes are logged with the old and new value.</span><button class="btn btn-primary" type="button" id="legalSave">Save changes</button></div>
       </div></details>`;
   }
   function saveLegalForm(c) {
     const all = [].concat.apply([], nbeGroups(c).map(g => g.fields)), next = {}, labels = {};
-    all.forEach(f => { labels[f.k] = f.label; const el = $('lg_' + f.k); next[f.k] = el ? el.value.trim() : ''; $('lgerr_' + f.k).hidden = true; });
+    all.filter(f => !f.calc).forEach(f => { labels[f.k] = f.label; const el = $('lg_' + f.k); next[f.k] = el ? el.value.trim() : ''; $('lgerr_' + f.k).hidden = true; });
     if (next.ownerIdType === 'National ID' && next.ownerId && !/^\d{14}$/.test(next.ownerId)) {
       $('lgerr_ownerId').textContent = 'A national ID has 14 digits.'; $('lgerr_ownerId').hidden = false; $('lg_ownerId').classList.add('invalid'); $('lg_ownerId').focus(); return;
     }

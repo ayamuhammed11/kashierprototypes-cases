@@ -453,3 +453,7 @@ td.cell-end, th.cell-end { text-align: end; }
 
 /* A button that is not available yet stays visible but dimmed; clicking it explains what is missing */
 .btn.dimmed { opacity: .45; cursor: not-allowed; }
+
+/* Fields from the gap analysis: row number and tags under the label */
+.gapn { font-size: 11px; font-weight: 400; color: var(--cadet-05); margin-inline-start: 4px; }
+.gaptags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
