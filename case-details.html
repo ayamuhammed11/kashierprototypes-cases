@@ -90,6 +90,20 @@
     <div class="dr-body" id="lgBody" style="gap:0"></div>
   </aside>
 
+  <aside class="drawer lg" id="nbeDrawer" role="dialog" aria-modal="true" aria-labelledby="nbTitle" tabindex="-1">
+    <div class="handle"></div>
+    <div class="dr-head"><div><h2 id="nbTitle" data-focus tabindex="-1">Export for NBE</h2><p id="nbDesc"></p></div>
+      <button class="icon-btn" type="button" aria-label="Close" data-close-nbe id="nbClose"></button></div>
+    <div class="dr-body" id="nbBody"></div>
+    <div class="dr-foot"><button class="btn btn-outline" type="button" data-close-nbe>Close</button><button class="btn btn-primary" type="button" id="nbAll"></button></div>
+  </aside>
+
+  <input type="file" id="intFile" multiple hidden>
+  <div class="modal-wrap" id="removeDocModal"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="rdT" tabindex="-1">
+    <div><h2 id="rdT" data-focus tabindex="-1">Remove this document?</h2><p class="md" id="rdD"></p></div>
+    <div class="modal-foot"><button class="btn btn-outline btn-sm" type="button" data-close-modal>Cancel</button><button class="btn btn-destructive btn-sm" type="button" id="rdGo">Remove</button></div>
+  </div></div>
+
   <div class="modal-wrap" id="rejectConfirm"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="rcT" tabindex="-1">
     <div><h2 id="rcT" data-focus tabindex="-1">Return this application to Sales?</h2><p class="md" id="rcD"></p></div>
     <div class="modal-foot"><button class="btn btn-outline btn-sm" type="button" data-close-modal>Go back</button><button class="btn btn-destructive btn-sm" type="button" id="rcGo">Reject &amp; return</button></div>
@@ -104,11 +118,14 @@
 
 
 <script src="rate-decisions.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="cases-core.js"></script>
+<script src="nbe-defaults.js" onerror="void 0"></script>
+<script src="nbe-export.js"></script>
 <script>
   const C = Cases, K = C.K, esc = C.esc, $ = id => document.getElementById(id);
   C.mountShell({ search: false });
-  $('rjClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('dvClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('lgClose').innerHTML = C.icon('x', 'hi-lg', 1.5);
+  $('rjClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('dvClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('lgClose').innerHTML = C.icon('x', 'hi-lg', 1.5); $('nbClose').innerHTML = C.icon('x', 'hi-lg', 1.5);
   const APP_ID = new URLSearchParams(location.search).get('app') || '';
   let tab = 'business', flagFor = '', payRejectFor = '';
 
@@ -134,6 +151,7 @@
       h += `<button class="btn btn-primary" type="button" id="approveBtn"${p.ready ? '' : ' disabled'} title="${p.ready ? '' : 'Review every item first — ' + (p.total - p.done) + ' left'}">${C.icon('check', 'hi-18', 2)}Approve</button>`;
     }
     if (c.status === 'pending-configurations') h += `<button class="btn btn-destructive-outline" type="button" id="bankRejectBtn">${C.icon('undo')}Rejected by the bank</button>`;
+    if (window.NBEExport && NBEExport.available() && NBEExport.hasNbe(c.app)) h += `<button class="btn btn-outline" type="button" id="nbeBtn">${C.icon('download')}Export for NBE</button>`;
     h += `<button class="btn btn-outline" type="button" id="logsBtn">${C.icon('doc')}View logs</button>`;
     $('actions').innerHTML = h;
 
@@ -155,6 +173,7 @@
     // Every step of the application, required and optional, in the order Sales fills them in.
     const req = C.contractsRequired(c.app);
     const t = [['business', 'Business details', ''], ['pricing', 'Services & pricing', ''], ['documents', 'Documents', ''], ['payout', 'Payout method', 'Optional'], ['contracts', 'Contracts', req ? 'Required' : 'Optional']];
+    t.push(['internal', 'Internal documents & data', 'Underwriting only']);
     return t.map(([k, label, tag]) => [k, label, st(k), tag]);
   }
   function renderTabs(c) {
@@ -303,6 +322,109 @@
     const note = po.pending && isOpen(c) ? `<div class="alert warning">${C.icon('warn', 'hi-lg')}<div class="at"><span><b>${po.pending} payout method${po.pending === 1 ? '' : 's'} waiting for your decision.</b> The case can be approved once each one is approved or rejected.</span></div></div>` : '';
     return `<h2 class="sec-title">Payout methods</h2>${note}<div style="display:flex;flex-direction:column;gap:12px">${cards}</div>`;
   }
+  /* Internal documents: Underwriting's own reference files for the case, kept apart from the application. */
+  const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  /* The KYC workbook fields the application covers only partly (marked Partial in the field gap analysis). Each shows what the
+     application already holds, so it is clear what Underwriting is completing. */
+  const LEGAL_FORMS = ['Sole proprietorship', 'Limited liability company (LLC)', 'Joint stock company (JSC)', 'One-person company', 'General partnership', 'Limited partnership', 'Other'];
+  const roleEmail = name => String(name || '').toLowerCase().trim().replace(/\s+/g, '.') + '@kashier.io';   // the prototype's convention: first.last@kashier.io
+  function legalFields(c) {
+    const app = c.app, ops = (app.summary.serviceConfigs || []).reduce((a, sc) => a.concat((sc.configs || []).reduce((b, x) => b.concat(x.operations || []), [])), []);
+    const recurring = ops.some(o => /recurring|moto/i.test(o)), pay = K.currentPayout(app), terminals = Number(app.summary.posTerminals || 0);
+    const groups = [
+      { title: 'Legal entity', fields: [
+        { k: 'legalForm', label: 'Legal form / registration type', type: 'select', options: LEGAL_FORMS, hint: `The application only has the merchant type (${app.summary.entity}).` },
+        { k: 'taxNumber', label: 'Tax card number', hint: 'The application only holds the uploaded tax card.' },
+        { k: 'crNumber', label: 'Commercial registration number', hint: 'The application only holds the uploaded commercial register.' },
+        { k: 'activity', label: 'Business activity description', type: 'textarea', wide: true, hint: `The application only has the industry (${app.summary.industry}), no description of what is sold.` },
+        { k: 'activityAr', label: 'Business activity description (Arabic)', type: 'textarea', rtl: true, wide: true, hint: 'The banks ask for the description in Arabic as well.' } ] },
+      { title: 'Owner and signatory', fields: [
+        { k: 'ownerName', label: 'Owner full name', hint: 'The application shows the CRM contact name in the list only, and does not mark it as the owner.' },
+        { k: 'ownerIdType', label: 'Owner ID type', type: 'select', options: ['National ID', 'Passport'], hint: 'The application infers it from the nationality and never stores it.' },
+        { k: 'ownerId', label: 'Owner national ID / legal ID number', hint: 'The application only holds the uploaded ID images. A national ID is 14 digits.' },
+        { k: 'ownerNationality', label: 'Owner nationality', hint: 'The application only records Egyptian or Foreign, so a foreign owner\u2019s actual nationality is missing.' },
+        { k: 'signatory', label: 'Authorized signatory name', hint: 'No signatory name field in the application. Upload the signature under Extra documents, type \u201cAuthorized signatory signature\u201d.' } ] },
+      { title: 'Bank account and sales owner', fields: [
+        { k: 'bankAccount', label: 'Merchant bank account number', def: pay && pay.method === 'bank' ? pay.account : '', hint: 'The payout step is optional and can hold only an e-wallet, so a bank account is not guaranteed.' },
+        { k: 'salesOwnerEmail', label: 'Sales owner email', def: roleEmail(app.actor), hint: `The application shows ${app.actor}\u2019s name, not the email.` } ] },
+    ];
+    if (recurring) groups[2].fields.push({ k: 'recurringReason', label: 'Reason for Recurring / MOTO', type: 'textarea', wide: true, hint: 'The application has an optional notes box, not a required justification.' });
+    if (terminals) groups.push({ title: 'POS terminals', fields: Array.from({ length: terminals }, (_, i) => ({ k: 'tid' + (i + 1), label: `Terminal ${i + 1} serial / TID`, hint: i === 0 ? 'The application shows terminals as \u201cTo be assigned\u201d and cannot take a serial or TID.' : '' })) });
+    if (window.NBEExport && NBEExport.available() && NBEExport.hasNbe(app)) {
+      const nd = NBEExport.defaults(c), pos = NBEExport.needsPos(app), onl = NBEExport.needsOnline(app);
+      const nf = [
+        { k: 'legalName', label: 'Company (legal) name', def: nd.legalName, hint: 'Goes on the NBE forms. Defaults to the business name; change it if the legal name differs.' },
+        { k: 'address1', label: 'Business address line 1', hint: 'The application has no address fields. Needed on every NBE form.' },
+        { k: 'address2', label: 'Business address line 2', hint: 'Optional.' },
+        { k: 'governorate', label: 'Governorate', type: 'select', options: NBEExport.GOVERNORATES, hint: 'Printed with the postal code, for example \u201cCairo \u2014 11511\u201d.' },
+        { k: 'city', label: 'City', hint: 'The MATCH sheet takes it in capitals.' },
+        { k: 'postalCode', label: 'Postal code', hint: '' },
+        { k: 'mcc', label: 'Merchant category code (MCC)', hint: 'Four digits, from the merchant\u2019s sector.' },
+        { k: 'merchantCategory', label: 'Merchant category', def: nd.merchantCategory, hint: 'The category written in the email to NBE. Defaults to the industry.' },
+      ];
+      if (onl) nf.push({ k: 'nbeBranch', label: 'Merchant NBE branch', def: nd.nbeBranch, hint: 'Kashier\u2019s branch on the e-commerce form. Change it for the merchant\u2019s own branch.' },
+        { k: 'platformType', label: 'Platform type', def: nd.platformType, hint: '' }, { k: 'gateway', label: 'Gateway', def: nd.gateway, hint: '' },
+        { k: 'programmingLanguage', label: 'Programming language', hint: 'Optional.' },
+        { k: 'hostedPayments', label: 'Hosted payments', type: 'select', options: ['Hosted session', 'Hosted checkout'], hint: 'Ticks one of the two options on the e-commerce form.' });
+      if (pos) nf.push({ k: 'ownerTitle', label: 'Owner title', type: 'select', options: ['MR', 'MRS'], hint: 'First column of the POS KYC sheet.' },
+        { k: 'nbeCityCode', label: 'NBE city code', hint: 'For example \u201cALEX 02A\u201d. Used instead of the city on the POS KYC sheet.' },
+        { k: 'nbeMerchantId', label: 'NBE-assigned merchant ID', hint: 'Optional. Issued by the bank, so usually empty when you first send.' });
+      groups.push({ title: 'NBE forms', fields: nf });
+    }
+    groups.push({ title: 'Bank tracking', fields: [
+      { k: 'dateSent', label: 'Date sent to bank', type: 'date', def: c.status === 'pending-configurations' && c.record.approvedTs ? c.record.approvedTs.slice(0, 10) : '', hint: 'The application only has the Sales submission date.' },
+      { k: 'docsSent', label: 'Documents sent to the bank', type: 'select', options: ['Not sent yet', 'Sent', 'Sent \u2014 with issues'], hint: 'The application has no document-send status.' },
+      { k: 'docsIssues', label: 'Issues with the documents sent', type: 'textarea', wide: true, hint: 'For example \u201cwaiting for a valid national ID\u201d or \u201cmissing contract\u201d.' },
+      { k: 'bankDecision', label: 'Bank decision status', type: 'select', options: ['Waiting for the bank', 'Approved', 'Rejected', 'Waiting for the merchant\u2019s reply'], hint: 'The application only has internal stages. If the bank rejects, use \u201cRejected by the bank\u201d to return the application to Sales.' } ] });
+    return groups;
+  }
+  function legalSection(c) {
+    const saved = C.legalData(c.app), groups = legalFields(c), all = [].concat.apply([], groups.map(g => g.fields));
+    const val = f => saved[f.k] != null ? saved[f.k] : (f.def || '');
+    const filled = all.filter(f => String(val(f)).trim()).length;
+    const input = f => {
+      const id = 'lg_' + f.k, v = esc(val(f)), common = `id="${id}" data-legal="${f.k}"`;
+      return f.type === 'select' ? `<select class="select" ${common}><option value="">Select\u2026</option>${f.options.map(o => `<option${val(f) === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+        : f.type === 'textarea' ? `<textarea class="textarea" ${common} style="min-height:72px"${f.rtl ? ' dir="rtl"' : ''}>${v}</textarea>`
+        : `<input class="input" ${common} type="${f.type === 'date' ? 'date' : 'text'}" value="${v}" autocomplete="off">`;
+    };
+    return `<div class="sub-h" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">Legal and bank data<span class="muted" style="font-size:13px;font-weight:400">${filled} of ${all.length} filled</span></div>
+      <p class="sec-sub" style="margin-top:-8px">Fill in what the banks and vendors ask for. The note under each field says what the application already holds.</p>
+      ${groups.map(g => `<div class="cfg-card"><div class="cfg-head">${esc(g.title)}</div><div class="lg-grid">${g.fields.map(f => `<div class="field${f.wide ? ' wide' : ''}"><label for="lg_${f.k}">${esc(f.label)}</label>${input(f)}<span class="fhint">${esc(f.hint || '')}</span><span class="err" id="lgerr_${f.k}" hidden></span></div>`).join('')}</div></div>`).join('')}
+      <div class="review-bar"><span class="muted" style="font-size:13px">Changes are saved with the case and logged with the old and new value.</span><button class="btn btn-primary" type="button" id="legalSave">Save changes</button></div>`;
+  }
+  function saveLegalForm(c) {
+    const groups = legalFields(c), all = [].concat.apply([], groups.map(g => g.fields)), next = {}, labels = {};
+    all.forEach(f => { labels[f.k] = f.label; const el = $('lg_' + f.k); next[f.k] = el ? el.value.trim() : ''; $('lgerr_' + f.k).hidden = true; });
+    let bad = '';
+    if (next.ownerIdType === 'National ID' && next.ownerId && !/^\d{14}$/.test(next.ownerId)) { $('lgerr_ownerId').textContent = 'A national ID has 14 digits.'; $('lgerr_ownerId').hidden = false; bad = 'ownerId'; }
+    if (bad) { $('lg_' + bad).classList.add('invalid'); $('lg_' + bad).focus(); return; }
+    const n = C.saveLegal(c.app, next, labels);
+    render(); C.toast(n ? `${n} field${n === 1 ? '' : 's'} saved with this case.` : 'No changes to save.');
+  }
+
+  function panelInternal(c) {
+    const docs = C.internalDocs(c.app);
+    const rows = docs.map(d => `<div class="rrow"><div class="rrow-main"><div class="rrow-ic">${C.icon('doc')}</div>
+      <div class="rrow-info"><div class="n">${esc(d.name)} <span class="chip neutral" style="margin-inline-start:6px">${esc(d.type)}</span></div>
+        <div class="f">${fmtSize(d.size)} \u00b7 uploaded by ${esc(d.by)} \u00b7 ${C.fmtDateTime(d.ts)}</div>${d.note ? `<div class="f" style="color:var(--cadet-base);margin-top:2px">${esc(d.note)}</div>` : ''}</div>
+      <div class="rrow-act"><button class="btn btn-outline btn-sm" type="button" data-int-view="${esc(d.id)}">${C.icon('doc', 'hi-sm')}View</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-int-dl="${esc(d.id)}">${C.icon('download', 'hi-sm')}Download</button>
+        ${isOpen(c) ? `<button class="btn btn-ghost btn-sm" type="button" data-int-rm="${esc(d.id)}" aria-label="Remove ${esc(d.name)}">${C.icon('trash', 'hi-sm')}</button>` : ''}</div></div></div>`).join('');
+    return `<h2 class="sec-title">Internal documents &amp; data</h2>
+      <div class="alert info">${C.icon('lock', 'hi-lg')}<div class="at"><b>Underwriting only</b><span>Everything on this tab is entered by the Underwriting team for the banks and vendors: legal and bank data the application only partly covers, and extra documents. It is saved with this case so you can come back to it any time. Sales and the merchant never see it, and it is not part of the application.</span></div></div>
+      ${legalSection(c)}
+      <div class="sub-h">Extra documents</div>
+      <div class="field" style="gap:12px"><span class="lab">Add a document</span>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="min-width:190px"><label for="intType">Type</label><select class="select" id="intType">${C.INTERNAL_TYPES.map(t => `<option>${esc(t)}</option>`).join('')}</select></div>
+          <div class="field" style="flex:1;min-width:220px"><label for="intNote">Note <span class="muted" style="font-weight:400">(optional)</span></label><input class="input" id="intNote" maxlength="200" placeholder="What is this file for?"></div>
+          <button class="btn btn-primary" type="button" id="intUpload">${C.icon('upload')}Upload files</button></div>
+        <div class="muted" style="font-size:12px">Files up to 800 KB keep their content so they can be opened and downloaded again in this prototype. Larger files are listed by name only.</div></div>
+      <div class="sub-h">${docs.length} document${docs.length === 1 ? '' : 's'} saved</div>
+      ${docs.length ? `<div style="display:flex;flex-direction:column;gap:12px">${rows}</div>` : `<div class="empty"><div class="ic">${C.icon('lock', 'hi-lg')}</div><div class="t">No internal documents yet</div><div class="d">Files you add here stay with this case and are visible to Underwriting only.</div></div>`}`;
+  }
+
   function panelContracts(c) {
     const list = c.app.contracts || [];
     if (!list.length) return `<h2 class="sec-title">Contracts</h2><div class="empty"><div class="t">No contracts were uploaded</div><div class="d">${C.contractsRequired(c.app) ? 'A signed PF contract is required for this application.' : 'Contracts are optional for this application.'}</div></div>`;
@@ -353,7 +475,7 @@
     if (!c) { $('nfIc').innerHTML = C.icon('inbox', 'hi-lg'); return; }
     if (!tabList(c).some(t => t[0] === tab)) tab = 'business';
     renderHead(c); renderTabs(c);
-    $('panel').innerHTML = { business: panelBusiness, documents: panelDocuments, pricing: panelPricing, payout: panelPayout, contracts: panelContracts }[tab](c);
+    $('panel').innerHTML = { business: panelBusiness, documents: panelDocuments, pricing: panelPricing, payout: panelPayout, contracts: panelContracts, internal: panelInternal }[tab](c);
     renderAside(c);
     const f = document.querySelector('#panel [data-focus]'); if (f) f.focus();
   }
@@ -375,6 +497,16 @@
       flagFor = ''; C.setReview(c.app, b.dataset.flagSave, 'flag', v, b.dataset.label); render(); return;
     }
     if ((b = g('[data-view-doc]'))) { viewDoc(c, b.dataset.viewDoc, b.dataset.contract, b); return; }
+    if (g('#nbeBtn')) { openNbe(c, g('#nbeBtn')); return; }
+    if (g('[data-close-nbe]')) { C.closeDrawer('nbeDrawer'); return; }
+    if ((b = g('[data-nbe-dl]'))) { nbeDownload(c, b.dataset.nbeDl); return; }
+    if (g('#nbAll')) { nbeDownloadAll(c); return; }
+    if (g('[data-nbe-fill]')) { C.closeDrawer('nbeDrawer'); tab = 'internal'; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (g('#legalSave')) { saveLegalForm(c); return; }
+    if (g('#intUpload')) { $('intFile').click(); return; }
+    if ((b = g('[data-int-view]'))) { viewInternal(c, b.dataset.intView, b); return; }
+    if ((b = g('[data-int-dl]'))) { downloadInternal(c, b.dataset.intDl); return; }
+    if ((b = g('[data-int-rm]'))) { rmId = b.dataset.intRm; const d = C.internalDocs(c.app).find(x => x.id === rmId); $('rdD').innerHTML = `<b>${esc(d ? d.name : '')}</b> is removed from this case. This cannot be undone.`; C.openModal('removeDocModal', b); return; }
     if (g('#logsBtn')) { openLogs(c, g('#logsBtn')); return; }
     if (g('[data-close-logs]')) { C.closeDrawer('logsDrawer'); return; }
     if (g('[data-close-doc]')) { C.closeDrawer('docDrawer'); return; }
@@ -392,7 +524,7 @@
     if (g('#approveBtn')) { openApprove(c, g('#approveBtn')); return; }
     if (g('#rejectBtn')) { openReject(c, g('#rejectBtn')); return; }
     if (g('#bankRejectBtn')) { openReject(c, g('#bankRejectBtn'), true); return; }
-    if (g('[data-close-drawer]') || g('#scrim')) { C.closeDrawer('rejectDrawer'); C.closeDrawer('docDrawer'); C.closeDrawer('logsDrawer'); return; }
+    if (g('[data-close-drawer]') || g('#scrim')) { C.closeDrawer('rejectDrawer'); C.closeDrawer('docDrawer'); C.closeDrawer('logsDrawer'); C.closeDrawer('nbeDrawer'); return; }
     if (g('[data-close-modal]')) { C.closeModal(g('.modal-wrap').id); return; }
     if (e.target.classList && e.target.classList.contains('modal-wrap')) C.closeModal(e.target.id);
   });
@@ -414,6 +546,75 @@
       : '<div class="empty"><div class="t">No file was uploaded</div></div>';
     $('dvDownload').onclick = () => C.toast('Downloading ' + name + ' (prototype — no file is stored).');
     C.openDrawer('docDrawer', trigger);
+  }
+
+  /* Upload, view, download and remove an internal document. Content is kept only for small files (browser storage is limited). */
+  let rmId = '';
+  $('intFile').addEventListener('change', e => {
+    const c = cur(), files = [...e.target.files], type = $('intType') ? $('intType').value : 'Other', note = $('intNote') ? $('intNote').value.trim() : '';
+    e.target.value = '';
+    if (!c || !files.length) return;
+    let saved = 0, failed = 0, left = files.length;
+    const done = () => { if (--left) return; render(); C.toast(failed ? `${saved} saved, ${failed} could not be stored (browser storage is full).` : `${saved} document${saved === 1 ? '' : 's'} saved with this case.`); };
+    files.forEach(f => {
+      const base = { id: 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: f.name, type: type, note: note, size: f.size, mime: f.type, by: C.user().name, ts: new Date().toISOString(), data: '' };
+      const finish = () => { if (C.addInternalDoc(c.app, base)) saved++; else failed++; done(); };
+      if (f.size > 800 * 1024) { finish(); return; }
+      const fr = new FileReader(); fr.onload = () => { base.data = String(fr.result || ''); finish(); }; fr.onerror = finish; fr.readAsDataURL(f);
+    });
+  });
+  function downloadInternal(c, id) {
+    const d = C.internalDocs(c.app).find(x => x.id === id);
+    if (!d) return;
+    if (!d.data) { C.toast('This file was too large to keep in the prototype, so only its name is saved.'); return; }
+    const a = document.createElement('a'); a.href = d.data; a.download = d.name; a.click();
+  }
+  function viewInternal(c, id, trigger) {
+    const d = C.internalDocs(c.app).find(x => x.id === id);
+    if (!d) return;
+    $('dvTitle').textContent = d.name;
+    $('dvDesc').textContent = `${d.type} \u00b7 Underwriting only \u00b7 uploaded by ${d.by}`;
+    const frame = !d.data ? `<div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);aspect-ratio:3 / 4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--cadet-05);text-align:center;padding:16px">${C.icon('doc', 'hi-lg')}<span style="font-size:13px">${esc(d.name)}</span><span style="font-size:12px">Too large to keep in the prototype, so only its name is saved.</span></div>`
+      : /^image\//.test(d.mime) ? `<img src="${d.data}" alt="${esc(d.name)}" style="max-width:100%;border:1px solid var(--border);border-radius:var(--radius)">`
+      : /pdf/.test(d.mime) ? `<iframe src="${d.data}" title="${esc(d.name)}" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:var(--radius)"></iframe>`
+      : `<div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);padding:24px;text-align:center;color:var(--cadet-base)">${C.icon('doc', 'hi-lg')}<div style="margin-top:8px;font-size:13px">No preview for this file type. Use Download to open it.</div></div>`;
+    $('dvBody').innerHTML = (d.note ? `<div class="note">${esc(d.note)}</div>` : '') + frame;
+    $('dvDownload').textContent = 'Download';
+    $('dvDownload').onclick = () => downloadInternal(c, id);
+    C.openDrawer('docDrawer', trigger);
+  }
+  $('rdGo').addEventListener('click', () => { const c = cur(); C.closeModal('removeDocModal'); if (c && C.removeInternalDoc(c.app, rmId)) { render(); C.toast('Document removed.'); } });
+
+  /* Export for NBE: the bank's forms, prefilled from this case. Each file shows what went in and what is still missing. */
+  function nbeReview(c) { return NBEExport.review(c, C.legalData(c.app)); }
+  function openNbe(c, trigger) {
+    const packs = nbeReview(c), files = packs.reduce((a, p) => a.concat(p.files), []), missing = files.reduce((n, f) => n + f.missing.length, 0);
+    $('nbDesc').textContent = `${c.app.biz} \u00b7 ${files.length} file${files.length === 1 ? '' : 's'} for National Bank of Egypt`;
+    $('nbAll').innerHTML = `${C.icon('download')}Download all (${files.length})`;
+    $('nbBody').innerHTML = (missing ? `<div class="alert warning">${C.icon('warn', 'hi-lg')}<div class="at"><b>${missing} field${missing === 1 ? '' : 's'} still empty</b><span>The files download with those cells blank. Fill them in under Internal documents &amp; data, then export again. <button class="link-btn" type="button" data-nbe-fill style="font-size:14px">Open Internal documents &amp; data</button></span></div></div>`
+      : `<div class="alert success">${C.icon('checkCircle', 'hi-lg')}<div class="at"><b>Every field is filled</b><span>Review the values, then download the files.</span></div></div>`)
+      + packs.map(p => `<div style="display:flex;flex-direction:column;gap:12px"><h3 style="font-family:'Noto Sans',sans-serif;font-size:16px;color:var(--cadet-base)">${esc(p.title)}</h3>${p.files.map(f => `<div class="cfg-card">
+        <div class="cfg-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:10px;min-width:0"><span class="chip neutral">${f.ext.toUpperCase()}</span><span>${esc(f.name)}</span></span>
+          <span style="display:flex;align-items:center;gap:10px">${f.missing.length ? `<span class="chip warning">${f.missing.length} empty</span>` : '<span class="chip positive">Complete</span>'}
+            <button class="btn btn-outline btn-sm" type="button" data-nbe-dl="${esc(f.id)}">${C.icon('download', 'hi-sm')}Download</button></span></div>
+        ${f.missing.length ? `<div style="padding:10px 16px;font-size:13px;color:var(--warning-text);background:var(--warning-bg)">Empty: ${f.missing.map(m => esc(m.label)).join(', ')}</div>` : ''}
+        <details style="padding:10px 16px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--link)">Review the ${f.filled} filled value${f.filled === 1 ? '' : 's'}</summary>
+          <div style="margin-top:10px;display:flex;flex-direction:column">${f.rows.map(r => `<div class="crow" style="padding:4px 0;font-size:13px"><span class="k" style="font-size:12px">${esc(r.label)}</span><span class="v" style="font-weight:${r.value ? 600 : 400};color:${r.value ? 'var(--foreground)' : 'var(--cadet-06)'};white-space:pre-line">${r.value ? esc(r.value) : '\u2014'}</span></div>`).join('')}</div></details></div>`).join('')}</div>`).join('');
+    C.openDrawer('nbeDrawer', trigger);
+  }
+  async function nbeDownload(c, fileId) {
+    const pack = NBEExport.packsFor(c).find(p => p.files.some(f => f.id === fileId)), f = pack.files.find(x => x.id === fileId);
+    try { NBEExport.save(await NBEExport.build(c, C.legalData(c.app), fileId), NBEExport.fileName(c, f, pack)); C.addEvent(c.app, 'Exported the NBE form ' + f.name, 'Exported'); C.toast(`${f.name} downloaded.`); }
+    catch (e) { C.toast(e.message || 'The file could not be created.'); }
+  }
+  async function nbeDownloadAll(c) {
+    try {
+      const zip = new JSZip(), packs = NBEExport.packsFor(c);
+      for (const p of packs) for (const f of p.files) zip.file(NBEExport.fileName(c, f, p), await NBEExport.build(c, C.legalData(c.app), f.id));
+      NBEExport.save(await zip.generateAsync({ type: 'blob' }), 'NBE - ' + c.app.biz.replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.zip');
+      C.addEvent(c.app, 'Exported the NBE forms', 'Exported'); C.toast('The NBE forms were downloaded as one zip.');
+    } catch (e) { C.toast(e.message || 'The files could not be created.'); }
   }
 
   /* Logs: everything that happened on the case, newest first, in a drawer. */
@@ -529,6 +730,7 @@
   });
 
 
+  window.addEventListener('nbe-ready', render);
   render();
 </script>
 </body>

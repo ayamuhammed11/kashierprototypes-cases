@@ -58,6 +58,7 @@ window.Cases = (function () {
     undo: 'M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3',
     rocket: 'M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
     bars: 'M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5',
+    lock: 'M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z',
     plus: 'M12 4.5v15m7.5-7.5h-15',
     trash: 'm14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0',
     xCircle: 'm9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
@@ -89,12 +90,12 @@ window.Cases = (function () {
   /* ── Local state: assignee, review checklist, internal notes ── */
   const read = () => K.readStore(STORE);
   const write = o => K.writeStore(STORE, o);
-  function local(appId) { return Object.assign({ assignee: '', review: {}, notes: [], events: [] }, read()[appId] || {}); }
+  function local(appId) { return Object.assign({ assignee: '', review: {}, notes: [], events: [], internalDocs: [], legal: {} }, read()[appId] || {}); }
   function save(appId, patch) { const all = read(); all[appId] = Object.assign(local(appId), patch); write(all); }
   /* Case-only events (assignment, review, notes), shaped like the application log's so both read the same way. */
-  function addEvent(app, text, action, who) {
+  function addEvent(app, text, action, who, details) {
     const l = local(app.id);
-    l.events.push({ ts: new Date().toISOString(), who: who || user().name, text: text, action: action || 'Changed', category: 'Case', role: 'Underwriting', details: [] });
+    l.events.push({ ts: new Date().toISOString(), who: who || user().name, text: text, action: action || 'Changed', category: 'Case', role: 'Underwriting', details: details || [] });
     save(app.id, { events: l.events });
   }
   function assign(app, name) {
@@ -181,6 +182,38 @@ window.Cases = (function () {
   }
 
   /* ── Underwriting decisions (the Merchant module's own functions) ── */
+  /* ── Internal documents ──
+     Extra files Underwriting collects before submitting to the bank (site visit reports, bank correspondence, credit checks...).
+     They are kept with the case, in this module's own store, and are never part of the application: Sales, the merchant and the
+     application's activity log never see them. Small files keep their content so they can be opened and downloaded again. */
+  const INTERNAL_TYPES = ['Site visit report', 'Bank correspondence', 'Credit check', 'Merchant call notes', 'Compliance screening', 'Authorized signatory signature', 'Other'];
+  /* Legal and bank data Underwriting enters for the banks and vendors: the KYC fields the application only partly covers.
+     Saved with the case; every change is logged with its old and new value, and none of it reaches Sales. */
+  const legalData = app => local(app.id).legal || {};
+  function saveLegal(app, next, labels) {
+    const prev = legalData(app), changes = [];
+    Object.keys(next).forEach(k => { const a = prev[k] == null ? '' : String(prev[k]), b = String(next[k] == null ? '' : next[k]).trim(); if (a !== b) changes.push({ label: labels[k] || k, from: a, to: b }); });
+    if (!changes.length) return 0;
+    save(app.id, { legal: Object.assign({}, prev, next) });
+    addEvent(app, 'Updated the underwriting legal data (' + changes.length + ' field' + (changes.length === 1 ? '' : 's') + ')', 'Changed', null, changes);
+    return changes.length;
+  }
+  const internalDocs = app => local(app.id).internalDocs || [];
+  function addInternalDoc(app, d) {
+    const docs = internalDocs(app).slice();
+    docs.unshift(d);
+    save(app.id, { internalDocs: docs });
+    if (!internalDocs(app).some(x => x.id === d.id)) return false;      // storage full or unavailable
+    addEvent(app, 'Uploaded the internal document ' + d.name + ' \u2014 ' + d.type, 'Uploaded');
+    return true;
+  }
+  function removeInternalDoc(app, id) {
+    const d = internalDocs(app).filter(x => x.id === id)[0];
+    if (!d) return false;
+    save(app.id, { internalDocs: internalDocs(app).filter(x => x.id !== id) });
+    addEvent(app, 'Removed the internal document ' + d.name, 'Removed');
+    return true;
+  }
   const approve = app => K.approveAccount({ app: app, role: 'onboarding' });
   const reject = (app, reason, items, fromBank) => K.rejectAccount({ app: app, role: 'onboarding', reason: reason, items: items, fromBank: !!fromBank });
   const goLive = app => K.goLiveAccount({ app: app, role: 'onboarding' });
@@ -306,7 +339,7 @@ window.Cases = (function () {
     if (d) closeDrawer(d.id);
   });
 
-  return { K: K, ME: ME, TEAM: TEAM, user: user, CATALOG: CATALOG, ratesFor: ratesFor, contractsRequired: contractsRequired, STATUS: STATUS, icon: icon, esc: esc, fmtDate: fmtDate, fmtDateTime: fmtDateTime, initials: initials, ageOf: ageOf, chip: chip,
+  return { K: K, ME: ME, TEAM: TEAM, user: user, legalData: legalData, saveLegal: saveLegal, INTERNAL_TYPES: INTERNAL_TYPES, internalDocs: internalDocs, addInternalDoc: addInternalDoc, removeInternalDoc: removeInternalDoc, CATALOG: CATALOG, ratesFor: ratesFor, contractsRequired: contractsRequired, STATUS: STATUS, icon: icon, esc: esc, fmtDate: fmtDate, fmtDateTime: fmtDateTime, initials: initials, ageOf: ageOf, chip: chip,
     all: all, get: get, local: local, assign: assign, addEvent: addEvent, checks: checks, progress: progress, setReview: setReview, payoutState: payoutState,
     approve: approve, reject: reject, goLive: goLive, addNote: addNote, activity: activity, mountShell: mountShell, toast: toast,
     openDrawer: openDrawer, closeDrawer: closeDrawer, openModal: openModal, closeModal: closeModal, caseNo: caseNo, docKey: docKey, conKey: conKey, conName: conName };
