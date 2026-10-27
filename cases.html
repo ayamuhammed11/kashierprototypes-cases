@@ -74,8 +74,8 @@
   const C = Cases, esc = C.esc, $ = id => document.getElementById(id);
   C.mountShell({ search: false });
   // Bank Misr takes its cases as one batch a day; the link shows only where the bank's sheets are available.
-  const showBm = () => { const l = $('bmLink'); l.innerHTML = C.icon('inbox') + 'Bank Misr batch'; l.hidden = !BMExport.available(); };
-  showBm(); window.addEventListener('bm-ready', showBm);
+  const showBm = () => { const l = $('bmLink'); l.innerHTML = C.icon('inbox') + 'Bank Misr batch'; l.hidden = !BMExport.available() || (!!S.bank && S.bank !== BMExport.BM); };
+  window.addEventListener('bm-ready', showBm);
 
   const TABS = [['all', 'All'], ['submitted', 'Underwriting Review'], ['pending-configurations', 'Bank Submission']];
   const S = { tab: 'all', q: '', assignee: '', bank: '', owner: '', page: 1, per: 10, sort: null, loading: true };
@@ -168,7 +168,7 @@
   }
 
   function render() {
-    closeMenus();
+    closeMenus(); showBm();
     renderTabs(); renderFilters(); renderHead();
     $('rpp').value = S.per;
     if (S.loading) {
